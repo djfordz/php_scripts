@@ -1,0 +1,759 @@
+#!/usr/bin/env php
+<?php
+/**
+ * This script will copy one Magento installation to another location
+ * and will create a new database instance if the -n flag is used
+ *
+ * This script is Magemojo LLC propriety specific and can only be used
+ * on Magemojo LLC servers with the mmcli api installed.
+ *
+ * @category  SiteCopy
+ * @package   Magemojo
+ * @author    David Ford <david@magemojo.com>
+ * @copyright 2017 Magemojo LLC
+ * @license   MIT https://opensource.org/licenses/MIT
+ * @link      https://magemojo.com
+ */
+
+/**
+ * Sets ini value register_argc_argv
+ *
+ * @return void 
+ */
+ini_set('register_argc_argv', '1');
+
+/**
+ * Checks ini value for register_argc_argv.
+ * Sets $options
+ */
+$options = getopt(
+    'nehu:d:v:', array(
+        'user:', 'domain:', 'db:', 'host:', 'from:', 'to:'
+    )
+);
+
+checkFlags($options);
+
+if (!ini_get('register_argc_argv')) {
+    echo "Could not set register_argc_argv\n";
+    echo "Must use --from --to flags for paths\n";
+    exit(1);
+} else {
+    if ($argc < 3 ) {
+        echo "Need FROM path and TO path of Magento installations\n";
+        exit();
+    } else {
+        $options['from'] = $argv[$argc - 2];
+        $options['to'] = $argv[$argc - 1];
+    }
+} 
+
+if (!is_dir($options['to'])) {
+    createDestinationFolder($options['to']);
+}
+
+$src = realPath($options['from']);
+$dest = realPath($options['to']);
+
+checkPaths($src, $dest);
+
+$vmUser = getvmUser($dest);
+$fromCreds = getDbCreds($src);
+$newDbCreds = toDb($options);
+
+if (array_key_exists('domain', $options)) {
+    $domain = $options['domain'];
+    $newDbCreds['domain'] = $options['domain'];
+} else if (array_key_exists('d', $options)) {
+    $domain = $options['d'];
+    $newDbCreds['domain'] = $options['d'];
+}
+
+if (array_key_exists('e', $options) || $argc > 1) {
+    if (!array_key_exists('d', $options) && !array_key_exists('domain', $options)) {
+        echo "need --domain or -d flag to continue\n";
+        exit(0);
+    }
+    siteCopy($src, $dest);
+    migrateDb($fromCreds, $newDbCreds);
+    addCreds($newDbCreds, $dest);
+    echo "setting directory ownership...\n";
+    chownRecursive($dest, $vmUser);
+}
+
+if (array_key_exists('n', $options)) {
+    createVhost($dest, $vmUser, $domain);
+    siteCopy($src, $dest);
+    migrateDb($fromCreds, $newDbCreds);
+    addCreds($newDbCreds, $dest);
+    echo "setting directory ownership...\n";
+    chownRecursive($dest, $vmUser);
+}
+
+echo "Finished copying Magento Install\n";
+
+/**
+ * Get vm user
+ *
+ * @param string $path path to get user from
+ *
+ * @return string
+ */
+function getvmUser($path)
+{
+    $dirs = explode('/', $path, 4);
+    $user = $dirs[2];
+    return $user;
+}
+
+/**
+ * Get Server Internal IP
+ *
+ * @return string
+ */
+function getIP() 
+{
+    return gethostbyname(gethostname());
+}
+
+/**
+ * Create DNS entry
+ *
+ * @param string $ip     IP of server
+ * @param string $domain domain
+ *
+ * @return void
+ */
+function createDns($ip, $domain)
+{
+    echo "Creating DNS...\n";
+    $output = shell_exec("mmcli dns:create $domain $ip");
+    if (preg_match("/Error/", $output)) {
+        throw new \Exception($output . 'Could not create DNS Entry.');
+        exit(1);
+    }
+}
+/**
+ * Ensure user wants to use paths
+ *
+ * @param string $src  FROM path.
+ * @param string $dest TO path.
+ *
+ * @return void
+ */
+function checkPaths($src, $dest) 
+{
+    if (isset($src) && isset($dest)) {
+        $ans = readline("Copying the Magento Install FROM $src TO $dest? (y/N)");
+
+        if ($ans != 'Y' && $ans != 'y' && $ans != 'YES' && $ans != 'yes') {
+            echo "exiting...We will not be copying Magento Install\n";
+            exit(1);
+        }
+    } else {
+        throw new \InvalidArgumentException('FROM path or TO path not specified.');
+        exit(1);
+    }
+}
+
+/**
+ * Ensure cli flags are used correctly
+ *
+ * @param array $options cli flags
+ *
+ * @return void
+ */
+function checkFlags($options) 
+{
+    if (array_key_exists('n', $options) && array_key_exists('e', $options)) {
+        echo "Cannot use -n new and -e existing flags together\n";
+        exit(1);
+    }
+
+    if (array_key_exists('d', $options) && array_key_exists('db', $options)) {
+        echo "Cannot use -d and --db flags together, they are same thing\n";
+        exit(1);
+    }
+
+    if (array_key_exists('u', $options) && array_key_exists('user', $options)) {
+        echo "Cannot use -u and --user flags together, they are same thing.";
+        exit(1);
+    }
+
+    if (array_key_exists('e', $options) 
+        && (!array_key_exists('d', $options) && !array_key_exists)
+    ) {
+        echo "Need --domain or -d options when -e is used. (domain of existing dev vhost)\n";
+    }
+
+    if (array_key_exists('n', $options) 
+        && (!array_key_exists('domain', $options) && !array_key_exists('d', $options))
+        && (!array_key_exists('db', $options) && !array_key_exists('v', $options))
+        && (!array_key_exists('user', $options) && !array_key_exists('u', $options))
+    ) {
+        echo "Need --domain --user --db options when -n new is used.\n";
+        exit(1);
+    }
+
+    if (array_key_exists('h', $options)) {
+        help();
+        exit(0);
+    }
+}
+
+/**
+ * Get database credentials 
+ *
+ * @param array $options cli flags
+ *
+ * @return array 
+ */
+function toDb($options) 
+{
+    $creds = getDbCreds(realPath($options['to']));
+    if (!isset($creds)) {
+        if (array_key_exists('user', $options)) {
+            $dbuser = $options['user'];
+        } else if (array_key_exists('u', $options)) {
+            $dbuser = $options['u']; 
+        } 
+
+        if (array_key_exists('db', $options)) {
+            $dbname = $options['db'];
+        } else if (array_key_exists('v', $options)) {
+            $dbname = $options['v'];
+        } 
+        if (array_key_exists('host', $options)) {
+            $host = $options['host'];
+        } else {
+            $host = 'localhost';
+        }
+
+        $creds = createDb($dbname, $dbuser, $host);
+        if (!isset($creds)) {
+            throw new \Exception("could not create db.");
+        }
+        $creds['path'] = $options['to'];
+    }
+
+    return $creds;
+}
+
+/**
+ * Gives usage instructions
+ *
+ * @return void
+ */
+function help() 
+{
+    echo "\nMust be run as user root! Be Careful!\nPlease report all bugs to david@magemojo.com\n\n";
+    echo "usage: ./sitecopy -dehnuv [ --user db_user ] [ --db db_name ] [ --domain domain_name ] 
+        /path/from/Magento /path/to/Magento\n";
+    echo "\nex. ./sitecopy -e --domain mefu.magemojo.io public_html/ dev/\n";
+    echo "\nex. ./sitecopy -n --user dford --db new_db --domain mefu2.magemojo.io public_html/ dev2/\n\n";
+    echo "-d domain name (same as --domain)\n";
+    echo "-e existing\n";
+    echo "-h help\n";
+    echo "-n new\n";
+    echo "-u database user (same as --user)\n";
+    echo "-v database name (same as --db)\n";
+    echo "--db database name (same as -v, only needed if -n is used)\n";
+    echo "--domain domain of vhost to be copied to\n";
+    echo "--host database host (if not localhost)\n";
+    echo "--user database user (same as -u, only needed if -n is used)\n";
+}
+
+/**
+ * Creates Database
+ *
+ * @param string $dbname database name 
+ * @param string $user   database user 
+ * @param string $host   database host
+ *
+ * @throws Could not set database privileges.
+ * @throws Could not create database.
+ * @return array
+ */
+function createDb($dbname, $user, $host = 'localhost')
+{
+
+    $dbpass = createUser($user, $host);
+    echo "Creating Database...\n";
+    $output = shell_exec("mmcli database:create $dbname");
+    if (preg_match('/True/', $output)) {
+        $output = shell_exec(
+            "mmcli database:user:privileges:update $dbname $user $host all"
+        );
+
+        if (!preg_match('/True/', $output)) {
+            throw new \Exception("Could not set database privileges.");
+             exit();
+        }
+    } else {
+        throw new \Exception("Could not create database.");
+        exit();
+    }
+
+    $creds = array(
+        'dbname' => $dbname, 
+        'dbuser' => $user, 
+        'dbpass' => $dbpass, 
+        'dbhost'   => $host 
+    );
+    return $creds;
+}
+
+/**
+ * Creates Database User
+ *
+ * @param string $user database user from argv
+ * @param string $host database host
+ *
+ * @throws Could not create user, uses mmcli database:user:create
+ *
+ * @return string $password
+ */
+function createUser($user, $host)
+{
+    echo "Creating Database User...\n";
+    $password = randomPass(12);
+    $output = shell_exec(
+        "mmcli database:user:create $user $host $password $password"
+    );
+    if (!preg_match('/True/', $output)) {
+        throw new \Exception("Could not create user");
+        exit(1);
+    } 
+
+    return $password;
+}
+
+/**
+ * Create a vhost
+ *
+ * @param string $dest   destination path
+ * @param string $user   vhost user
+ * @param string $domain vhost domain
+ *
+ * @return array
+ */
+function createVhost($dest, $user, $domain)
+{
+    echo "Creating vhost...\n";
+    $ip = getIP();
+    $output = shell_exec("mmcli vhost:create $ip $user $dest '$domain'");
+    if (preg_match("/Error/", $output)) {
+        throw new \Exception($output . "Could not create vhost");
+        exit(1);
+    }
+    createDns($ip, $domain);
+}
+
+/**
+ * Copies site using rsync
+ *
+ * @param string $src  path to Magento Install
+ * @param string $dest path to Magento Install
+ *
+ * @return void
+ */
+function siteCopy($src, $dest)
+{
+    if (is_dir($dest)) {
+        if (isDirEmpty($dest)) {
+            echo "Copying files...";
+            $result = cpdirRecursive($src, $dest);
+            echo "Finished copying files.\n";
+        } else {
+            $ans = readline(
+                "Are you sure you want to remove files from $dest? (y/N)"
+            );
+            if ($ans != 'y' && $ans != 'Y' && $ans != 'YES' && $ans != 'yes') {
+                echo "Will not remove files. Exiting...";
+                exit(1);
+            } else {
+                echo "Removing Files...\n";
+                rmdirRecursive($dest, true);
+                createDestinationFolder($dest);
+                echo "Copying Files...\n";
+                cpdirRecursive($src, $dest); 
+                echo "Finished copying files\n";
+            } 
+        }
+    }
+}
+
+/**
+ * Check to see if directory is empty
+ *
+ * @param string $dir path to directory
+ *
+ * @return bool|null
+ */
+function isDirEmpty($dir) 
+{
+    if (!is_readable($dir)) {
+        return null;
+    }
+
+    return (count(scandir($dir)) == 2);
+}
+
+/**
+  * Creates psuedo-random password
+  *
+  * @param int $length length of password
+  *
+  * @link https://gist.github.com/zyphlar/7217f566fc83a9633959
+  *
+  * @return $password
+  */
+function randomPass($length)
+{
+    return substr(
+        preg_replace(
+            "/[^a-zA-Z0-9]/", 
+            "", 
+            base64_encode(
+                getRandomBytes(
+                    $length+1
+                )
+            )
+        ),
+        0, 
+        $length
+    );
+}
+
+/**
+ * Create cryptographically secure bytes.
+ *
+ * @param int $nbBytes number of bytes default 32
+ *
+ * @link https://gist.github.com/zyphlar/7217f566fc83a9633959
+ *
+ * @throws Unable to generate secure token from OpenSSL.
+ * @return bytes
+ */
+function getRandomBytes($nbBytes = 32)
+{
+    $bytes = openssl_random_pseudo_bytes($nbBytes, $strong);
+    if (false !== $bytes && true === $strong) {
+        return $bytes;
+    } else {
+        throw new \Exception("Unable to generate secure token from OpenSSL.");
+    }
+}
+
+/**
+ * Migrates database.
+ *
+ * @param string $fromCreds  database credentials of database copying from.
+ * @param string $newDbCreds database credentials of database copying to.
+ *
+ * @throws Could not dump database uses mysqldump, gzip
+ * @throws could not import database uses zcat, mysql
+ *
+ * @return void 
+ */
+function migrateDb($fromCreds, $newDbCreds)
+{
+    echo "creating database dump...\n";
+    $dbname = $fromCreds['dbname'];
+    $dbhost = $fromCreds['dbhost'];
+    $dbuser = $fromCreds['dbuser'];
+    $dbpass = $fromCreds['dbpass'];
+    $destdb = $newDbCreds['dbname'];
+    $desthost = $newDbCreds['dbhost'];
+    $destuser = $newDbCreds['dbuser'];
+    $destpass = $newDbCreds['dbpass'];
+    $domain = $newDbCreds['domain'];
+    $dbprefix = null;
+    if (isset($fromCreds['dbprefix'])) {
+        $dbprefix = $fromCreds['dbprefix'];
+    }
+
+    $tstamp = date("Y-d-M H:i:s");
+    $dbfile = "/home/" . $dbname . ".sql";
+
+    $output = shell_exec("mysqldump -h$dbhost -u$dbuser -p$dbpass $dbname > $dbfile");
+
+    if (preg_match("/[a-zA-Z]/", $output)) {
+        throw new \Exception("Could not dump database.");
+        exit(1);
+    }
+
+    echo "importing database...\n";
+    $output = shell_exec("mysql $destdb < $dbfile");
+    if (preg_match("/[a-zA-Z]/", $output)) {
+        throw new \Exception("Could not import database.");
+        exit(1);
+    } else {
+        unlink($dbfile);
+    }
+    echo "Changing Base Urls\n";
+    $url = shell_exec("mysql -h$desthost -u$destuser -p$destpass -e \"select value from $dbprefix" . "core_config_data where path = 'web/unsecure/base_url';\" $destdb");
+    $be = preg_split("/\n/", $url);
+    $baseUrl = $be[1];
+    if (isset($baseUrl) && isset($domain)) {
+        echo "Setting base urls...\n";
+        shell_exec("mysql -h$desthost -u$destuser -p$destpass -e \"UPDATE $dbprefix" . " core_config_data SET value = REPLACE(value, '$baseUrl', 'http://$domain/') WHERE value LIKE '%$baseUrl%';\" $destdb");
+    }
+}
+
+/**
+ * Get existing Magento database credentials 
+ *
+ * @param string $path path to Magento install
+ *
+ * @return array returns array of database credentials.
+ */
+function getDbCreds($path)
+{
+    if (file_exists($path . '/app/etc/local.xml')) {
+        $doc = new DOMDocument();
+        $doc->load($path . '/app/etc/local.xml');
+    } else {
+        return null;
+    }
+
+    $i = 0;
+    while (is_object($data = $doc->getElementsByTagName('db')->item($i))) {
+        foreach ($data->childNodes as $nodename) {
+            if ($nodename->nodeName == 'table_prefix') {
+                $dbprefix = $nodename->nodeValue;
+            }
+        }
+        $i++;
+    }
+    $i = 0; 
+    while (is_object($data = $doc->getElementsByTagName('connection')->item($i))) {
+        foreach ($data->childNodes as $nodename) {
+            switch($nodename->nodeName) {
+            case 'dbname': $dbname = $nodename->nodeValue;
+                break;
+            case 'username': $dbuser = $nodename->nodeValue;
+                break;
+            case 'password': $dbpass = $nodename->nodeValue;
+                break;
+            case 'host': $dbhost = $nodename->nodeValue;
+                break;
+            }
+        }
+        $i++;
+    }
+    
+    return array('dbprefix' => $dbprefix, 'dbname' => $dbname, 'dbuser' => $dbuser, 
+        'dbpass' => $dbpass, 'dbhost' => $dbhost, 'path' => $path);
+    
+}
+
+/**
+ * Add/Change database credentials to local.xml
+ *
+ * @param array  $creds to database credentials
+ * @param string $path  path to Magento install.
+ *
+ * @return bool
+ */
+function addCreds($creds, $path)
+{
+    echo "Changing db credentials in local.xml.\n";
+
+    if (file_exists($path . '/app/etc/local.xml')) {
+        $doc = new DOMDocument();
+        $doc->load($path . '/app/etc/local.xml');
+    } else {
+        throw new \Exception("Could not load app/etc/local.xml");
+    }
+
+    $i = 0;
+    while (is_object($data = $doc->getElementsByTagName('connection')->item($i))) {
+        foreach ($data->childNodes as $nodename) {
+            switch($nodename->nodeName) {
+            case 'dbname':      $node = $nodename->childNodes->item(0);
+                                $nodename->removeChild($node);
+                                $cdata = $nodename->ownerDocument->createCdataSection($creds['dbname']);
+                                $nodename->appendChild($cdata);
+                break;
+            case 'username':    $node = $nodename->childNodes->item(0);
+                                $nodename->removeChild($node);
+                                $cdata = $nodename->ownerDocument->createCdataSection($creds['dbuser']);
+                                $nodename->appendChild($cdata);                
+                break;
+            case 'password':    $node = $nodename->childNodes->item(0);
+                                $nodename->removeChild($node);
+                                $cdata = $nodename->ownerDocument->createCdataSection($creds['dbpass']);
+                                $nodename->appendChild($cdata);
+                break;
+            case 'host':        $node = $nodename->childNodes->item(0);
+                                $nodename->removeChild($node);
+                                $cdata = $nodename->ownerDocument->createCdataSection($creds['dbhost']);
+                                $nodename->appendChild($cdata);
+                break;
+            }
+        }
+        $i++;
+    }
+    $doc->save($path . '/app/etc/local.xml');
+}
+
+/**
+ * Change mode of a directory/file recursively
+ *
+ * @param string $dir  directory or file
+ * @param int    $mode mode
+ *
+ * @return bool
+ */
+function chmodRecursive($dir, $mode)
+{
+    return _recursiveCallback($dir, ['chmod', [$mode]]);
+}
+
+/**
+ * Change owner of a directory/file recursively
+ *
+ * @param string $path directory or file
+ * @param string $user user 
+ *
+ * @return bool
+ */
+function chownRecursive($path, $user)
+{
+    $dir = new DirectoryIterator($path);
+    foreach ($dir as $item) {
+        chown($item->getPathname(), (string)$user);
+        chgrp($item->getPathname(), "web-data");
+        if ($item->isDir() && !$item->isDot()) {
+            chownRecursive($item->getPathname(), $user);
+        }
+    }
+}
+
+/**
+ * Create destination folder
+ *
+ * @param string $destinationFolder destination folder
+ *
+ * @return bool
+ */
+function createDestinationFolder($destinationFolder)
+{
+    return checkAndCreateFolder($destinationFolder);
+}
+/**
+ * Check and create if not exists folder
+ *
+ * @param string $folder folder to check
+ * @param int    $mode   mode
+ *
+ * @return true
+ * @throws \Exception
+ */
+function checkAndCreateFolder($folder, $mode = 0755)
+{
+    if (is_dir($folder)) {
+        return true;
+    }
+    if (!is_dir(dirname($folder))) {
+        checkAndCreateFolder(dirname($folder), $mode);
+    }
+    if (!is_dir($folder) && !mkdir($folder, $mode)) {
+        throw new \Exception("Unable to create directory '{$folder}'. Access forbidden.");
+    }
+    return true;
+}
+
+/**
+ * Applies specified callback for a directory/file recursively
+ *
+ * $fileCallback and $dirCallback format: array($callback, $parameters)
+ * - $callback - callable
+ * - $parameters (optional) - array with parameters to be passed to the $callback
+ *
+ * @param string $dir          directory affected
+ * @param array  $fileCallback file callback
+ * @param array  $dirCallback  directory callback
+ *
+ * @return mixed
+ *
+ * @throws \InvalidArgumentException
+ */
+function _recursiveCallback($dir, array $fileCallback, array $dirCallback = [])
+{
+    if (empty($fileCallback) || !is_array($fileCallback) || !is_array($dirCallback)) {
+        throw new \InvalidArgumentException("file/dir callback is not specified");
+    }
+    if (empty($dirCallback)) {
+        $dirCallback = $fileCallback;
+    }
+    if (is_dir($dir)) {
+        foreach (scandir($dir) as $item) {
+            if (!strcmp($item, '.') || !strcmp($item, '..')) {
+                continue;
+            }
+            _recursiveCallback($dir . '/' . $item, $fileCallback, $dirCallback);
+        }
+        $callback = $dirCallback[0];
+        if (!is_callable($callback)) {
+            throw new \InvalidArgumentException("'dirCallback' parameter is not callable");
+        }
+        $parameters = isset($dirCallback[1]) ? $dirCallback[1] : [];
+    } else {
+        $callback = $fileCallback[0];
+        if (!is_callable($callback)) {
+            throw new \InvalidArgumentException("'fileCallback' parameter is not callable");
+        }
+        $parameters = isset($fileCallback[1]) ? $fileCallback[1] : [];
+    }
+    array_unshift($parameters, $dir);
+    $result = @call_user_func_array($callback, $parameters);
+
+    return $result;
+}
+
+/**
+ * Delete a directory recursively
+ *
+ * @param string $dir       directory to remove
+ * @param bool   $recursive recursive flag
+ *
+ * @return bool
+ */
+function rmdirRecursive($dir, $recursive = true)
+{
+    if ($recursive) {
+        $result = _recursiveCallback($dir, ['unlink'], ['rmdir']);
+    } else {
+        $result = @rmdir($dir);
+    }
+    return $result;
+}
+
+/**
+ * Copy dir recursively
+ *
+ * @param string $src  source directory.
+ * @param string $dest destination directory.
+ *
+ * @return void 
+ */
+function cpdirRecursive($src, $dest)
+{
+    foreach (
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator(
+                $src, \RecursiveDirectoryIterator::SKIP_DOTS
+            ), \RecursiveIteratorIterator::SELF_FIRST
+        ) as $item
+    ) {
+        if ($item->isDir()) {
+            mkdir($dest . DIRECTORY_SEPARATOR . $iterator->getSubPathName());
+        } else {
+            copy($item, $dest . DIRECTORY_SEPARATOR . $iterator->getSubPathName());
+        }
+    } 
+}
+
+
