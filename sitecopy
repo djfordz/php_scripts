@@ -48,16 +48,13 @@ if (!ini_get('register_argc_argv')) {
     }
 } 
 
-if (!is_dir($options['to'])) {
-    createDestinationFolder($options['to']);
-}
+$newvuser = checkPaths($options);
 
 $src = realPath($options['from']);
 $dest = realPath($options['to']);
 
-checkPaths($src, $dest);
-
 $vmUser = getvmUser($dest);
+
 $fromCreds = getDbCreds($src);
 $newDbCreds = toDb($options);
 
@@ -69,15 +66,11 @@ if (array_key_exists('domain', $options)) {
     $newDbCreds['domain'] = $options['d'];
 }
 
-if (array_key_exists('e', $options) || $argc > 1) {
-    if (!array_key_exists('d', $options) && !array_key_exists('domain', $options)) {
-        echo "need --domain or -d flag to continue\n";
-        exit(0);
-    }
+if (array_key_exists('e', $options)) {
     siteCopy($src, $dest);
     migrateDb($fromCreds, $newDbCreds);
     addCreds($newDbCreds, $dest);
-    echo "setting directory ownership...\n";
+    echo "Setting directory ownership...\n";
     chownRecursive($dest, $vmUser);
 }
 
@@ -86,11 +79,16 @@ if (array_key_exists('n', $options)) {
     siteCopy($src, $dest);
     migrateDb($fromCreds, $newDbCreds);
     addCreds($newDbCreds, $dest);
-    echo "setting directory ownership...\n";
+    echo "Setting directory ownership...\n";
     chownRecursive($dest, $vmUser);
 }
 
+
 echo "Finished copying Magento Install\n";
+if (isset($newvuser)) {
+    echo "Vhost User " . $newvuser[0] . "\n";
+    echo "Vhost Pass " . $newvuser[1] . "\n";
+}
 
 /**
  * Get vm user
@@ -119,14 +117,14 @@ function getIP()
 /**
  * Create DNS entry
  *
- * @param string $ip     IP of server
  * @param string $domain domain
  *
  * @return void
  */
-function createDns($ip, $domain)
+function createDns($domain)
 {
     echo "Creating DNS...\n";
+    $ip = exec('curl http://ipecho.net/plain; echo');
     $output = shell_exec("mmcli dns:create $domain $ip");
     if (preg_match("/Error/", $output)) {
         throw new \Exception($output . 'Could not create DNS Entry.');
@@ -136,13 +134,43 @@ function createDns($ip, $domain)
 /**
  * Ensure user wants to use paths
  *
- * @param string $src  FROM path.
- * @param string $dest TO path.
+ * @param array $options cli flags
  *
- * @return void
+ * @return array
  */
-function checkPaths($src, $dest) 
+function checkPaths($options) 
 {
+    $src = $options['from'];
+    $dest = $options['to'];
+    $s = explode('/', realpath($src));
+    $d = explode('/', $dest);
+
+    if ($s[1] !== 'home') {
+        echo "Src not home directory.\n";
+        exit(1);
+    } else if ($d[0] !== 'home' || $d[1] !== 'home') {
+        if (!is_dir($dest)) {
+            createDestinationFolder($dest);
+        }         
+    }
+
+    $d = explode('/', realpath($dest));
+
+    if ($s[2] !== $d[2]) {
+        if (array_key_exists('n', $options)) {
+            $user = createVUser($d[2]);
+        }
+    } 
+    
+    
+
+    if (!is_dir($src) && !isDirEmpty($src)) {
+        echo "FROM path is not valid\n";
+        exit(1);
+    }
+
+    
+
     if (isset($src) && isset($dest)) {
         $ans = readline("Copying the Magento Install FROM $src TO $dest? (y/N)");
 
@@ -154,6 +182,26 @@ function checkPaths($src, $dest)
         throw new \InvalidArgumentException('FROM path or TO path not specified.');
         exit(1);
     }
+
+    return $user;
+}
+
+/**
+ * Create vhost user
+ *
+ * @param string $user vhost user
+ *
+ * @return array
+ */
+function createVUser($user)
+{
+    $password = randomPass(12);
+    $output = shell_exec("mmcli user:create $user $password");
+    if (preg_match('/Error/', $output)) {
+        throw new \Exception('Could not create vhost user');
+        exit(1);
+    }
+    return array($user, $password);
 }
 
 /**
@@ -181,23 +229,32 @@ function checkFlags($options)
     }
 
     if (array_key_exists('e', $options) 
-        && (!array_key_exists('d', $options) && !array_key_exists)
+        && (!array_key_exists('d', $options) && !array_key_exists('domain', $options))
     ) {
         echo "Need --domain or -d options when -e is used. (domain of existing dev vhost)\n";
+        exit(1);
     }
 
-    if (array_key_exists('n', $options) 
-        && (!array_key_exists('domain', $options) && !array_key_exists('d', $options))
-        && (!array_key_exists('db', $options) && !array_key_exists('v', $options))
-        && (!array_key_exists('user', $options) && !array_key_exists('u', $options))
-    ) {
-        echo "Need --domain --user --db options when -n new is used.\n";
-        exit(1);
+    if (array_key_exists('n', $options)) { 
+        if (!array_key_exists('domain', $options) && !array_key_exists('d', $options)) {
+            echo "Need --domain --user --db options when -n new is used.\n";
+            exit(1);
+        } else if (!array_key_exists('db', $options) && !array_key_exists('v', $options)) {
+            echo "Need --domain --user --db options when -n new is used.\n";
+            exit(1);
+        } else if (!array_key_exists('user', $options) && !array_key_exists('u', $options)) {
+            echo "Need --domain --user --db options when -n new is used.\n";
+            exit(1);
+        }
     }
 
     if (array_key_exists('h', $options)) {
         help();
         exit(0);
+    }
+    if (!$options) {
+        echo "Need -e (existing) or -n (new) flag to continue\n";
+        exit(1);
     }
 }
 
@@ -346,7 +403,7 @@ function createVhost($dest, $user, $domain)
         throw new \Exception($output . "Could not create vhost");
         exit(1);
     }
-    createDns($ip, $domain);
+    createDns($domain);
 }
 
 /**
@@ -458,7 +515,7 @@ function getRandomBytes($nbBytes = 32)
  */
 function migrateDb($fromCreds, $newDbCreds)
 {
-    echo "creating database dump...\n";
+    echo "Creating database dump...\n";
     $dbname = $fromCreds['dbname'];
     $dbhost = $fromCreds['dbhost'];
     $dbuser = $fromCreds['dbuser'];
@@ -478,20 +535,20 @@ function migrateDb($fromCreds, $newDbCreds)
 
     $output = shell_exec("mysqldump -h$dbhost -u$dbuser -p$dbpass $dbname > $dbfile");
 
-    if (preg_match("/[a-zA-Z]/", $output)) {
+    if (!empty($output)) {
         throw new \Exception("Could not dump database.");
         exit(1);
     }
 
     echo "importing database...\n";
     $output = shell_exec("mysql $destdb < $dbfile");
-    if (preg_match("/[a-zA-Z]/", $output)) {
+    if (!empty($output)) {
         throw new \Exception("Could not import database.");
         exit(1);
     } else {
         unlink($dbfile);
     }
-    echo "Changing Base Urls\n";
+    echo "Changing base_urls...\n";
     $url = shell_exec("mysql -h$desthost -u$destuser -p$destpass -e \"select value from $dbprefix" . "core_config_data where path = 'web/unsecure/base_url';\" $destdb");
     $be = preg_split("/\n/", $url);
     $baseUrl = $be[1];
