@@ -596,14 +596,31 @@ function migrateDb($fromCreds, $newDbCreds)
         exit(1);
     }
 
+    echo "dropping database...\n";
+    $output = shell_exec(
+        "mysql -h$desthost -u$destuser -p$destpass -e \"drop database if exists $destdb; 
+        create database $destdb\""
+    ); 
+
+    if (!empty($output)) {
+        throw new \Exception("Could not drop database");
+        exit(1);
+    }
+    
     echo "importing database...\n";
-    $output = shell_exec("mysql $destdb < $dbfile");
+    $output = shell_exec(
+        "mysql -h$desthost -u$destuser -p$destpass $destdb < $dbfile"
+    );
+
     if (!empty($output)) {
         throw new \Exception("Could not import database.");
         exit(1);
     } else {
         unlink($dbfile);
     }
+
+    shell_exec("salt-call state.sls mods=[\"database\"]");
+
     echo "Changing base_urls...\n";
     $url = shell_exec(
         "mysql -h$desthost -u$destuser -p$destpass -e \"select value from $dbprefix" 
