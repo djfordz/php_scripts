@@ -322,6 +322,7 @@ function toDb($options)
         $creds = createDb($dbname, $dbuser, $host);
         if (!isset($creds)) {
             throw new \Exception("could not create db.");
+            exit(1);
         }
         $creds['path'] = $options['to'];
     }
@@ -380,11 +381,11 @@ function createDb($dbname, $user, $host = 'localhost')
 
         if (!preg_match('/True/', $output)) {
             throw new \Exception("Could not set database privileges.");
-             exit();
+             exit(1);
         }
     } else {
         throw new \Exception("Could not create database.");
-        exit();
+        exit(1);
     }
 
     $creds = array(
@@ -456,6 +457,7 @@ function createVhost($src, $dest, $user, $domain)
         $output = shell_exec("mmcli vhost:update:type $vname magento21");
         if (preg_match("/Error/", $output)) {
             throw new \Exception($output . " Could not set template");
+            exit(1);
         }
     }
 }
@@ -553,6 +555,7 @@ function getRandomBytes($nbBytes = 32)
         return $bytes;
     } else {
         throw new \Exception("Unable to generate secure token from OpenSSL.");
+        exit(1);
     }
 }
 
@@ -587,55 +590,41 @@ function migrateDb($fromCreds, $newDbCreds)
     $tstamp = date("Y-d-M H:i:s");
     $dbfile = "/home/" . $dbname . ".sql";
 
-    $output = shell_exec(
-        "mysqldump -h$dbhost -u$dbuser -p$dbpass $dbname > $dbfile"
+    exec(
+        "mysqldump -h$dbhost $dbname > $dbfile"
     );
-
-    if (!empty($output)) {
-        throw new \Exception("Could not dump database.");
-        exit(1);
-    }
 
     echo "Dropping tables...\n";
     $data = shell_exec(
-        "mysql -h$desthost -u$destuser -p$destpass $destdb -e \"show tables\" | awk \"{ print \$1 }\" | grep -v \"^Tables\""
+        "mysql -h$desthost $destdb -e \"show tables\" | awk \"{ print \$1 }\" | grep -v \"^Tables\""
     ); 
     $tables = explode("\n", $data);
-    shell_exec("mysql -h$desthost -e \"SET GLOBAL FOREIGN_KEY_CHECKS=0\" $destdb");
+    exec("mysql -h$desthost -e \"SET GLOBAL FOREIGN_KEY_CHECKS=0\" $destdb");
     foreach ($tables as $t) {
         if (!empty($t)) {
-            shell_exec("mysql -h$desthost -e \"drop table $t\" $destdb");
+            exec("mysql -h$desthost -e \"drop table $t\" $destdb");
         }
     }
-    shell_exec("mysql -h$desthost -e \"SET GLOBAL FOREIGN_KEY_CHECKS=1\" $destdb");
-    if (!empty($output)) {
-        throw new \Exception("Could not drop database");
-        exit(1);
-    }
+    exec("mysql -h$desthost -e \"SET GLOBAL FOREIGN_KEY_CHECKS=1\" $destdb");
     
-    echo "importing database...\n";
-    $output = shell_exec(
-        "mysql -h$desthost -u$destuser -p$destpass $destdb < $dbfile"
+    echo "Importing database...\n";
+    exec(
+        "mysql -h$desthost $destdb < $dbfile"
     );
 
-    if (!empty($output)) {
-        throw new \Exception("Could not import database.");
-        exit(1);
-    } else {
-        unlink($dbfile);
-    }
+    unlink($dbfile);
 
     echo "Changing base_urls...\n";
     $url = shell_exec(
-        "mysql -h$desthost -u$destuser -p$destpass -e \"select value from $dbprefix" 
+        "mysql -h$desthost -e \"select value from $dbprefix" 
         . "core_config_data where path = 'web/unsecure/base_url';\" $destdb"
     );
     $be = preg_split("/\n/", $url);
     $baseUrl = $be[1];
     if (isset($baseUrl) && isset($domain)) {
         echo "Setting base urls...\n";
-        shell_exec(
-            "mysql -h$desthost -u$destuser -p$destpass -e \"UPDATE $dbprefix" 
+        exec(
+            "mysql -h$desthost -e \"UPDATE $dbprefix" 
             . " core_config_data SET value = 
             REPLACE(value, '$baseUrl', 'http://$domain/') 
             WHERE value LIKE '%$baseUrl%';\" $destdb"
@@ -844,6 +833,7 @@ function checkAndCreateFolder($folder, $mode = 0755)
         throw new \Exception(
             "Unable to create directory '{$folder}'. Access forbidden."
         );
+        exit(1);
     }
     return true;
 }
@@ -870,6 +860,7 @@ function _recursiveCallback($dir, array $fileCallback, array $dirCallback = [])
         || !is_array($dirCallback)
     ) {
         throw new \InvalidArgumentException("file/dir callback is not specified");
+        exit(1);
     }
     if (empty($dirCallback)) {
         $dirCallback = $fileCallback;
@@ -886,6 +877,7 @@ function _recursiveCallback($dir, array $fileCallback, array $dirCallback = [])
             throw new \InvalidArgumentException(
                 "'dirCallback' parameter is not callable"
             );
+            exit(1);
         }
         $parameters = isset($dirCallback[1]) ? $dirCallback[1] : [];
     } else {
@@ -894,6 +886,7 @@ function _recursiveCallback($dir, array $fileCallback, array $dirCallback = [])
             throw new \InvalidArgumentException(
                 "'fileCallback' parameter is not callable"
             );
+            exit(1);
         }
         $parameters = isset($fileCallback[1]) ? $fileCallback[1] : [];
     }
