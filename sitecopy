@@ -622,7 +622,6 @@ function migrateDb($options, $fromCreds, $newDbCreds)
 
     unlink($dbfile);
 
-    echo "Changing base_urls...\n";
     $url = shell_exec(
         "mysql -h$desthost -e \"select value from $dbprefix" 
         . "core_config_data where path = 'web/unsecure/base_url';\" $destdb"
