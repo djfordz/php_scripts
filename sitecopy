@@ -69,7 +69,7 @@ if (array_key_exists('domain', $options)) {
 
 if (array_key_exists('e', $options)) {
     siteCopy($src, $dest);
-    migrateDb($fromCreds, $newDbCreds);
+    migrateDb($options, $fromCreds, $newDbCreds);
     addCreds($newDbCreds, $dest);
     echo "Setting directory ownership...\n";
     chownRecursive($dest, $vmUser);
@@ -78,7 +78,7 @@ if (array_key_exists('e', $options)) {
 if (array_key_exists('n', $options)) {
     createVhost($src, $dest, $vmUser, $domain);
     siteCopy($src, $dest);
-    migrateDb($fromCreds, $newDbCreds);
+    migrateDb($options, $fromCreds, $newDbCreds);
     addCreds($newDbCreds, $dest);
     echo "Setting directory ownership...\n";
     chownRecursive($dest, $vmUser);
@@ -178,6 +178,11 @@ function checkPaths($options)
 
     $dest = realpath($dest);
     $d = explode('/', realpath($dest));
+
+    if ($d[1] !== 'home') {
+        echo "Dest not home directory.\n";
+        exit(1);
+    }
 
     $user = null;
 
@@ -562,6 +567,7 @@ function getRandomBytes($nbBytes = 32)
 /**
  * Migrates database.
  *
+ * @param array  $options    options
  * @param string $fromCreds  database credentials of database copying from.
  * @param string $newDbCreds database credentials of database copying to.
  *
@@ -570,7 +576,7 @@ function getRandomBytes($nbBytes = 32)
  *
  * @return void 
  */
-function migrateDb($fromCreds, $newDbCreds)
+function migrateDb($options, $fromCreds, $newDbCreds)
 {
     echo "Creating database dump...\n";
     $dbname = $fromCreds['dbname'];
@@ -594,18 +600,20 @@ function migrateDb($fromCreds, $newDbCreds)
         "mysqldump -h$dbhost $dbname > $dbfile"
     );
 
-    echo "Dropping tables...\n";
-    $data = shell_exec(
-        "mysql -h$desthost $destdb -e \"show tables\" | awk \"{ print \$1 }\" | grep -v \"^Tables\""
-    ); 
-    $tables = explode("\n", $data);
-    exec("mysql -h$desthost -e \"SET GLOBAL FOREIGN_KEY_CHECKS=0\" $destdb");
-    foreach ($tables as $t) {
-        if (!empty($t)) {
-            exec("mysql -h$desthost -e \"drop table $t\" $destdb");
+    if (array_key_exists('e', $options)) {
+        echo "Dropping tables...\n";
+        $data = shell_exec(
+            "mysql -h$desthost $destdb -e \"show tables\" | awk \"{ print \$1 }\" | grep -v \"^Tables\""
+        ); 
+        $tables = explode("\n", $data);
+        exec("mysql -h$desthost -e \"SET GLOBAL FOREIGN_KEY_CHECKS=0\" $destdb");
+        foreach ($tables as $t) {
+            if (!empty($t)) {
+                exec("mysql -h$desthost -e \"drop table $t\" $destdb");
+            }
         }
+        exec("mysql -h$desthost -e \"SET GLOBAL FOREIGN_KEY_CHECKS=1\" $destdb");
     }
-    exec("mysql -h$desthost -e \"SET GLOBAL FOREIGN_KEY_CHECKS=1\" $destdb");
     
     echo "Importing database...\n";
     exec(
