@@ -53,6 +53,7 @@ $newvuser = checkPaths($options);
 $src = realPath($options['from']);
 $dest = realPath($options['to']);
 
+
 $vmUser = getvmUser($dest);
 
 $fromCreds = getDbCreds($src);
@@ -75,7 +76,7 @@ if (array_key_exists('e', $options)) {
 }
 
 if (array_key_exists('n', $options)) {
-    createVhost($dest, $vmUser, $domain);
+    createVhost($src, $dest, $vmUser, $domain);
     siteCopy($src, $dest);
     migrateDb($fromCreds, $newDbCreds);
     addCreds($newDbCreds, $dest);
@@ -90,6 +91,25 @@ if (isset($newvuser)) {
     echo "Vhost Pass " . $newvuser[1] . "\n";
 }
 
+/**
+ * Get Magento version (1.x or 2.x)
+ *
+ * @param string $path path to Magento install
+ *
+ * @return void|bool
+ */
+function getVersion($path)
+{
+    if (is_file($path . '/app/etc/env.php')) {
+        return 'M2';
+    } 
+    
+    if (is_file($path . '/app/etc/local.xml')) {
+        return 'M1';
+    }
+
+    return null;
+}
 /**
  * Get vm user
  *
@@ -140,20 +160,23 @@ function createDns($domain)
  */
 function checkPaths($options) 
 {
-    $src = $options['from'];
+    $src = realpath($options['from']);
     $dest = $options['to'];
-    $s = explode('/', realpath($src));
+    $s = explode('/', $src);
     $d = explode('/', $dest);
 
     if ($s[1] !== 'home') {
         echo "Src not home directory.\n";
         exit(1);
-    } else if ($d[0] !== 'home' || $d[1] !== 'home') {
+    } else if ($d[0] !== 'home' 
+        || $d[1] !== 'home'
+    ) { 
         if (!is_dir($dest)) {
             createDestinationFolder($dest);
         }         
     }
 
+    $dest = realpath($dest);
     $d = explode('/', realpath($dest));
 
     $user = null;
@@ -231,20 +254,28 @@ function checkFlags($options)
     }
 
     if (array_key_exists('e', $options) 
-        && (!array_key_exists('d', $options) && !array_key_exists('domain', $options))
+        && (!array_key_exists('d', $options) 
+        && !array_key_exists('domain', $options))
     ) {
-        echo "Need --domain or -d options when -e is used. (domain of existing dev vhost)\n";
+        echo "Need --domain or -d options when -e is used. 
+            (domain of existing dev vhost)\n";
         exit(1);
     }
 
     if (array_key_exists('n', $options)) { 
-        if (!array_key_exists('domain', $options) && !array_key_exists('d', $options)) {
+        if (!array_key_exists('domain', $options) 
+            && !array_key_exists('d', $options)
+        ) {
             echo "Need --domain --user --db options when -n new is used.\n";
             exit(1);
-        } else if (!array_key_exists('db', $options) && !array_key_exists('v', $options)) {
+        } else if (!array_key_exists('db', $options) 
+            && !array_key_exists('v', $options)
+        ) {
             echo "Need --domain --user --db options when -n new is used.\n";
             exit(1);
-        } else if (!array_key_exists('user', $options) && !array_key_exists('u', $options)) {
+        } else if (!array_key_exists('user', $options) 
+            && !array_key_exists('u', $options)
+        ) {
             echo "Need --domain --user --db options when -n new is used.\n";
             exit(1);
         }
@@ -305,11 +336,14 @@ function toDb($options)
  */
 function help() 
 {
-    echo "\nMust be run as user root! Be Careful!\nPlease report all bugs to david@magemojo.com\n\n";
-    echo "usage: ./sitecopy -dehnuv [ --user db_user ] [ --db db_name ] [ --domain domain_name ] 
-        /path/from/Magento /path/to/Magento\n";
+    echo "\nMust be run as user root! Be Careful!\n
+        Please report all bugs to david@magemojo.com\n\n";
+            echo "usage: ./sitecopy -dehnuv [ --user db_user ] 
+                [ --db db_name ] [ --domain domain_name ] 
+                /path/from/Magento /path/to/Magento\n";
     echo "\nex. ./sitecopy -e --domain mefu.magemojo.io public_html/ dev/\n";
-    echo "\nex. ./sitecopy -n --user dford --db new_db --domain mefu2.magemojo.io public_html/ dev2/\n\n";
+            echo "\nex. ./sitecopy -n --user dford --db new_db 
+                --domain mefu2.magemojo.io public_html/ dev2/\n\n";
     echo "-d domain name (same as --domain)\n";
     echo "-e existing\n";
     echo "-h help\n";
@@ -390,15 +424,17 @@ function createUser($user, $host)
 /**
  * Create a vhost
  *
+ * @param string $src    source path
  * @param string $dest   destination path
  * @param string $user   vhost user
  * @param string $domain vhost domain
  *
  * @return array
  */
-function createVhost($dest, $user, $domain)
+function createVhost($src, $dest, $user, $domain)
 {
     echo "Creating vhost...\n";
+    $vFlag = getVersion($src);
     $ip = getIP();
     $output = shell_exec("mmcli vhost:create $ip $user $dest '$domain'");
     if (preg_match("/Error/", $output)) {
@@ -406,6 +442,22 @@ function createVhost($dest, $user, $domain)
         exit(1);
     }
     createDns($domain);
+    
+    
+    if (isset($vFlag) && $vFlag === 'M2') {
+        $vname = str_replace('.', '_', $domain);
+        echo "Setting PHP Version to 70...\n";
+        $output = shell_exec("mmcli vhost:update:phpversion $vname 70");
+        if (preg_match("/Error/", $output)) {
+            throw new \Exception($output . " Could not change php version.");
+            exit(1);
+        }
+        echo "Setting Template to Magento2.1...\n";
+        $output = shell_exec("mmcli vhost:update:type $vname magento21");
+        if (preg_match("/Error/", $output)) {
+            throw new \Exception($output . " Could not set template");
+        }
+    }
 }
 
 /**
@@ -535,7 +587,9 @@ function migrateDb($fromCreds, $newDbCreds)
     $tstamp = date("Y-d-M H:i:s");
     $dbfile = "/home/" . $dbname . ".sql";
 
-    $output = shell_exec("mysqldump -h$dbhost -u$dbuser -p$dbpass $dbname > $dbfile");
+    $output = shell_exec(
+        "mysqldump -h$dbhost -u$dbuser -p$dbpass $dbname > $dbfile"
+    );
 
     if (!empty($output)) {
         throw new \Exception("Could not dump database.");
@@ -551,12 +605,20 @@ function migrateDb($fromCreds, $newDbCreds)
         unlink($dbfile);
     }
     echo "Changing base_urls...\n";
-    $url = shell_exec("mysql -h$desthost -u$destuser -p$destpass -e \"select value from $dbprefix" . "core_config_data where path = 'web/unsecure/base_url';\" $destdb");
+    $url = shell_exec(
+        "mysql -h$desthost -u$destuser -p$destpass -e \"select value from $dbprefix" 
+        . "core_config_data where path = 'web/unsecure/base_url';\" $destdb"
+    );
     $be = preg_split("/\n/", $url);
     $baseUrl = $be[1];
     if (isset($baseUrl) && isset($domain)) {
         echo "Setting base urls...\n";
-        shell_exec("mysql -h$desthost -u$destuser -p$destpass -e \"UPDATE $dbprefix" . " core_config_data SET value = REPLACE(value, '$baseUrl', 'http://$domain/') WHERE value LIKE '%$baseUrl%';\" $destdb");
+        shell_exec(
+            "mysql -h$desthost -u$destuser -p$destpass -e \"UPDATE $dbprefix" 
+            . " core_config_data SET value = 
+            REPLACE(value, '$baseUrl', 'http://$domain/') 
+            WHERE value LIKE '%$baseUrl%';\" $destdb"
+        );
     }
 }
 
@@ -569,42 +631,55 @@ function migrateDb($fromCreds, $newDbCreds)
  */
 function getDbCreds($path)
 {
-    if (file_exists($path . '/app/etc/local.xml')) {
+    if (is_file($path . '/app/etc/local.xml')) {
         $doc = new DOMDocument();
         $doc->load($path . '/app/etc/local.xml');
-    } else {
-        return null;
-    }
-
-    $i = 0;
-    while (is_object($data = $doc->getElementsByTagName('db')->item($i))) {
-        foreach ($data->childNodes as $nodename) {
-            if ($nodename->nodeName == 'table_prefix') {
-                $dbprefix = $nodename->nodeValue;
+        $i = 0;
+        while (is_object($data = $doc->getElementsByTagName('db')->item($i))) {
+            foreach ($data->childNodes as $nodename) {
+                if ($nodename->nodeName == 'table_prefix') {
+                    $dbprefix = $nodename->nodeValue;
+                }
             }
+            $i++;
         }
-        $i++;
-    }
-    $i = 0; 
-    while (is_object($data = $doc->getElementsByTagName('connection')->item($i))) {
-        foreach ($data->childNodes as $nodename) {
-            switch($nodename->nodeName) {
-            case 'dbname': $dbname = $nodename->nodeValue;
-                break;
-            case 'username': $dbuser = $nodename->nodeValue;
-                break;
-            case 'password': $dbpass = $nodename->nodeValue;
-                break;
-            case 'host': $dbhost = $nodename->nodeValue;
-                break;
+        $i = 0; 
+        while (is_object(
+            $data = $doc->getElementsByTagName('connection')->item($i)
+        )) {
+            foreach ($data->childNodes as $nodename) {
+                switch($nodename->nodeName) {
+                case 'dbname': $dbname = $nodename->nodeValue;
+                    break;
+                case 'username': $dbuser = $nodename->nodeValue;
+                    break;
+                case 'password': $dbpass = $nodename->nodeValue;
+                    break;
+                case 'host': $dbhost = $nodename->nodeValue;
+                    break;
+                }
             }
+            $i++;
         }
-        $i++;
-    }
-    
-    return array('dbprefix' => $dbprefix, 'dbname' => $dbname, 'dbuser' => $dbuser, 
-        'dbpass' => $dbpass, 'dbhost' => $dbhost, 'path' => $path);
-    
+        
+        return array('dbprefix' => $dbprefix, 
+            'dbname' => $dbname, 
+            'dbuser' => $dbuser, 
+            'dbpass' => $dbpass, 
+            'dbhost' => $dbhost, 
+            'path' => $path
+        );
+    } else if (is_file($path . '/app/etc/env.php')) {
+            $envData = include $path . '/app/etc/env.php';
+        return array('dbprefix' => $envData['db']['table_prefix'], 
+            'dbname' => $envData['db']['connection']['default']['dbname'], 
+            'dbuser' => $envData['db']['connection']['default']['username'],
+            'dbpass' => $envData['db']['connection']['default']['password'], 
+            'dbhost' => $envData['db']['connection']['default']['host'], 
+            'path' => $path
+        );
+        
+    } 
 }
 
 /**
@@ -617,44 +692,70 @@ function getDbCreds($path)
  */
 function addCreds($creds, $path)
 {
-    echo "Changing db credentials in local.xml.\n";
-
-    if (file_exists($path . '/app/etc/local.xml')) {
+    if (is_file($path . '/app/etc/local.xml')
+    ) {
+        echo "Changing db credentials in local.xml.\n";
         $doc = new DOMDocument();
         $doc->load($path . '/app/etc/local.xml');
-    } else {
-        throw new \Exception("Could not load app/etc/local.xml");
-    }
-
-    $i = 0;
-    while (is_object($data = $doc->getElementsByTagName('connection')->item($i))) {
-        foreach ($data->childNodes as $nodename) {
-            switch($nodename->nodeName) {
-            case 'dbname':      $node = $nodename->childNodes->item(0);
-                                $nodename->removeChild($node);
-                                $cdata = $nodename->ownerDocument->createCdataSection($creds['dbname']);
-                                $nodename->appendChild($cdata);
-                break;
-            case 'username':    $node = $nodename->childNodes->item(0);
-                                $nodename->removeChild($node);
-                                $cdata = $nodename->ownerDocument->createCdataSection($creds['dbuser']);
-                                $nodename->appendChild($cdata);                
-                break;
-            case 'password':    $node = $nodename->childNodes->item(0);
-                                $nodename->removeChild($node);
-                                $cdata = $nodename->ownerDocument->createCdataSection($creds['dbpass']);
-                                $nodename->appendChild($cdata);
-                break;
-            case 'host':        $node = $nodename->childNodes->item(0);
-                                $nodename->removeChild($node);
-                                $cdata = $nodename->ownerDocument->createCdataSection($creds['dbhost']);
-                                $nodename->appendChild($cdata);
-                break;
+        $i = 0;
+        while (is_object(
+            $data = $doc->getElementsByTagName('connection')->item($i)
+        )) {
+            foreach ($data->childNodes as $nodename) {
+                switch($nodename->nodeName) {
+                case 'dbname':      $node = $nodename->childNodes->item(0);
+                                    $nodename->removeChild($node);
+                                    $cdata = $nodename->ownerDocument
+                                        ->createCdataSection($creds['dbname']);
+                                    $nodename->appendChild($cdata);
+                    break;
+                case 'username':    $node = $nodename->childNodes->item(0);
+                                    $nodename->removeChild($node);
+                                    $cdata = $nodename->ownerDocument
+                                        ->createCdataSection($creds['dbuser']);
+                                    $nodename->appendChild($cdata);                
+                    break;
+                case 'password':    $node = $nodename->childNodes->item(0);
+                                    $nodename->removeChild($node);
+                                    $cdata = $nodename->ownerDocument
+                                        ->createCdataSection($creds['dbpass']);
+                                    $nodename->appendChild($cdata);
+                    break;
+                case 'host':        $node = $nodename->childNodes->item(0);
+                                    $nodename->removeChild($node);
+                                    $cdata = $nodename->ownerDocument
+                                        ->createCdataSection($creds['dbhost']);
+                                    $nodename->appendChild($cdata);
+                    break;
+                }
             }
+            $i++;
         }
-        $i++;
+        $result = $doc->save($path . '/app/etc/local.xml');
+        return $result;
+    } else if (is_file($path . '/app/etc/env.php')
+    ) {
+        echo "Setting credentials in env.php...\n";
+        $envData = include $path . '/app/etc/env.php'; 
+        $envData['db']['connection']['default']['dbname'] = $creds['dbname'];
+        $envData['db']['connection']['default']['username'] = $creds['dbuser'];    
+        $envData['db']['connection']['default']['password'] = $creds['dbpass'];
+        $envData['db']['connection']['default']['host'] = $creds['dbhost'];
+        $output = var_export($envData, true);
+        try {
+            $fp = fopen($path . '/app/etc/env.php', 'w');
+            fwrite($fp, "<?php\n return " . $output . ";\n");
+            fclose($fp);
+        } catch (\Exception $e) {
+            throw new \Exception("Could not write file" . $e);
+            exit(1);
+        }
+        return true;
+    } else {
+        throw new \Exception("Could not load config file");
+        exit(1);
     }
-    $doc->save($path . '/app/etc/local.xml');
+    return false;
 }
 
 /**
@@ -719,7 +820,9 @@ function checkAndCreateFolder($folder, $mode = 0755)
         checkAndCreateFolder(dirname($folder), $mode);
     }
     if (!is_dir($folder) && !mkdir($folder, $mode)) {
-        throw new \Exception("Unable to create directory '{$folder}'. Access forbidden.");
+        throw new \Exception(
+            "Unable to create directory '{$folder}'. Access forbidden."
+        );
     }
     return true;
 }
@@ -741,7 +844,10 @@ function checkAndCreateFolder($folder, $mode = 0755)
  */
 function _recursiveCallback($dir, array $fileCallback, array $dirCallback = [])
 {
-    if (empty($fileCallback) || !is_array($fileCallback) || !is_array($dirCallback)) {
+    if (empty($fileCallback) 
+        || !is_array($fileCallback) 
+        || !is_array($dirCallback)
+    ) {
         throw new \InvalidArgumentException("file/dir callback is not specified");
     }
     if (empty($dirCallback)) {
@@ -756,13 +862,17 @@ function _recursiveCallback($dir, array $fileCallback, array $dirCallback = [])
         }
         $callback = $dirCallback[0];
         if (!is_callable($callback)) {
-            throw new \InvalidArgumentException("'dirCallback' parameter is not callable");
+            throw new \InvalidArgumentException(
+                "'dirCallback' parameter is not callable"
+            );
         }
         $parameters = isset($dirCallback[1]) ? $dirCallback[1] : [];
     } else {
         $callback = $fileCallback[0];
         if (!is_callable($callback)) {
-            throw new \InvalidArgumentException("'fileCallback' parameter is not callable");
+            throw new \InvalidArgumentException(
+                "'fileCallback' parameter is not callable"
+            );
         }
         $parameters = isset($fileCallback[1]) ? $fileCallback[1] : [];
     }
