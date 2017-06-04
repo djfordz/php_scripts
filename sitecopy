@@ -311,13 +311,20 @@ function toDb($options)
             $dbuser = $options['user'];
         } else if (array_key_exists('u', $options)) {
             $dbuser = $options['u']; 
-        } 
+        } else {
+            echo "local.xml or env.php was unable to be read, or --user or -u needs to be used.\n";
+            exit(1);
+        }
 
         if (array_key_exists('db', $options)) {
             $dbname = $options['db'];
         } else if (array_key_exists('v', $options)) {
             $dbname = $options['v'];
+        } else {
+            echo "local.xml or env.php could not be read or --db or -v needs to be used.\n";
+            exit(1);
         } 
+
         if (array_key_exists('host', $options)) {
             $host = $options['host'];
         } else {
@@ -376,30 +383,35 @@ function help()
 function createDb($dbname, $user, $host = 'localhost')
 {
 
-    $dbpass = createUser($user, $host);
-    echo "Creating Database...\n";
-    $output = shell_exec("mmcli database:create $dbname");
-    if (preg_match('/True/', $output)) {
-        $output = shell_exec(
-            "mmcli database:user:privileges:update $dbname $user $host all"
-        );
+    if (isset($dbname) && isset($user)) {
+        $dbpass = createUser($user, $host);
+        echo "Creating Database...\n";
+        $output = shell_exec("mmcli database:create $dbname");
+        if (preg_match('/True/', $output)) {
+            $output = shell_exec(
+                "mmcli database:user:privileges:update $dbname $user $host all"
+            );
 
-        if (!preg_match('/True/', $output)) {
-            throw new \Exception("Could not set database privileges.");
-             exit(1);
+            if (!preg_match('/True/', $output)) {
+                throw new \Exception("Could not set database privileges.");
+                 exit(1);
+            }
+        } else {
+            throw new \Exception("Could not create database.");
+            exit(1);
         }
+
+        $creds = array(
+            'dbname' => $dbname, 
+            'dbuser' => $user, 
+            'dbpass' => $dbpass, 
+            'dbhost'   => $host 
+        );
+        return $creds;
     } else {
-        throw new \Exception("Could not create database.");
-        exit(1);
+        return null;
     }
 
-    $creds = array(
-        'dbname' => $dbname, 
-        'dbuser' => $user, 
-        'dbpass' => $dbpass, 
-        'dbhost'   => $host 
-    );
-    return $creds;
 }
 
 /**
@@ -700,6 +712,8 @@ function getDbCreds($path)
         echo "local.xml or env.php does not exist or cannot be read.";
         exit(1);
     }
+
+    return null;
 }
 
 /**
