@@ -271,18 +271,21 @@ function checkFlags($options)
         if (!array_key_exists('domain', $options) 
             && !array_key_exists('d', $options)
         ) {
-            echo "Need --domain --user --db options when -n new is used.\n";
+            echo "Need --domain --db or -d -v options when -n new is used.\n";
             exit(1);
         } else if (!array_key_exists('db', $options) 
             && !array_key_exists('v', $options)
         ) {
-            echo "Need --domain --user --db options when -n new is used.\n";
+            echo "Need --domain --db or -d -v  options when -n new is used.\n";
             exit(1);
         } else if (!array_key_exists('user', $options) 
             && !array_key_exists('u', $options)
         ) {
-            echo "Need --domain --user --db options when -n new is used.\n";
-            exit(1);
+            if (array_key_exists('db', $options)) {
+                $options['user'] = $options['db'];
+            } else if (array_key_exists('v', $options)) {
+                $options['user'] = $options['v'];
+            }
         }
     }
 
@@ -311,6 +314,12 @@ function toDb($options)
             $dbuser = $options['user'];
         } else if (array_key_exists('u', $options)) {
             $dbuser = $options['u']; 
+        } else {
+            if (array_key_exists('db', $options)) {
+                $dbuser = $options['db'];
+            } else if (array_key_exists('v', $options)) {
+                $dbuser = $options['v'];
+            }
         } 
 
         if (array_key_exists('db', $options)) {
@@ -623,21 +632,26 @@ function migrateDb($options, $fromCreds, $newDbCreds)
     unlink($dbfile);
 
     echo "Changing base_urls...\n";
-    $url = shell_exec(
-        "mysql -h$desthost -e \"select value from $dbprefix" 
-        . "core_config_data where path = 'web/unsecure/base_url';\" $destdb"
-    );
-    $be = preg_split("/\n/", $url);
-    $baseUrl = $be[1];
-    if (isset($baseUrl) && isset($domain)) {
-        echo "Setting base urls...\n";
-        exec(
-            "mysql -h$desthost -e \"UPDATE $dbprefix" 
-            . " core_config_data SET value = 
-            REPLACE(value, '$baseUrl', 'http://$domain/') 
-            WHERE value LIKE '%$baseUrl%';\" $destdb"
+    try {
+        $dest = new \PDO(
+            "mysql:dbname=$destdb;host=$desthost",
+            $destuser,
+            $destpass
         );
+    } catch (\PDOException $e) {
+        echo 'Connection failed: ' . $e->getMessage();
     }
+
+    foreach ($dest->query("SELECT value FROM $destdb.$dbprefix" . "core_config_data WHERE path = 'web/unsecure/base_url';") as $row) {
+        $data = $row;
+    }
+    
+    $url = $data['value'];
+    $d = substr($url, 5);
+    if (isset($url) && isset($domain)) {
+        $dest->exec("UPDATE $dbprefix" . "core_config_data SET value = REPLACE(value, '$url', 'http://$domain/') WHERE value LIKE '%$d'");
+    }
+    $dest = null;
 }
 
 /**
