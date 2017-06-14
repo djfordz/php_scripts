@@ -146,8 +146,8 @@ function createDns($domain)
     echo "Creating DNS...\n";
     $ip = exec('curl http://ipecho.net/plain; echo');
     $output = shell_exec("mmcli dns:create $domain $ip");
-    if (preg_match("/Error/", $output)) {
-        throw new \Exception($output . 'Could not create DNS Entry.');
+    if (preg_match("/error/", $output)) {
+        throw new \Exception($output . 'Could not create DNS Entry. Message: ' . $output . "\n");
         exit(1);
     }
 }
@@ -186,7 +186,7 @@ function checkPaths($options)
 
     $user = null;
 
-    if ($s[2] !== $d[2]) {
+    if ($s[2] != $d[2]) {
         if (array_key_exists('n', $options)) {
             $user = createVUser($d[2]);
         }
@@ -227,10 +227,11 @@ function createVUser($user)
 {
     $password = randomPass(12);
     $output = shell_exec("mmcli user:create $user $password");
-    if (preg_match('/Error/', $output)) {
-        throw new \Exception('Could not create vhost user');
+    if (preg_match('/error/', $output)) {
+        throw new \Exception('Could not create vhost user. Message: ' . $output . "\n");
         exit(1);
     }
+
     return array($user, $password);
 }
 
@@ -248,8 +249,8 @@ function checkFlags($options)
         exit(1);
     }
 
-    if (array_key_exists('d', $options) && array_key_exists('db', $options)) {
-        echo "Cannot use -d and --db flags together, they are same thing\n";
+    if (array_key_exists('v', $options) && array_key_exists('db', $options)) {
+        echo "Cannot use -v and --db flags together, they are same thing\n";
         exit(1);
     }
 
@@ -309,7 +310,11 @@ function checkFlags($options)
 function toDb($options) 
 {
     $creds = getDbCreds(realPath($options['to']));
-    if (!isset($creds)) {
+
+    if (!isset($creds) 
+        || array_key_exists('db', $options) 
+        || array_key_exists('v', $options)
+    ) {
         if (array_key_exists('user', $options)) {
             $dbuser = $options['user'];
         } else if (array_key_exists('u', $options)) {
@@ -333,7 +338,15 @@ function toDb($options)
             $host = 'localhost';
         }
 
+        if (!isset($dbuser) && !isset($dbname)) {
+            echo "Could not read local.xml or env.php of destination.
+                Please check to ensure destination config file is readable. 
+                and/or --db flag not set\n";
+            exit(1);
+        }
+
         $creds = createDb($dbname, $dbuser, $host);
+
         if (!isset($creds)) {
             throw new \Exception("could not create db.");
             exit(1);
@@ -353,12 +366,14 @@ function help()
 {
     echo "\nMust be run as user root! Be Careful!\n
         Please report all bugs to david@magemojo.com\n\n";
-            echo "usage: ./sitecopy -dehnuv [ --user db_user ] 
-                [ --db db_name ] [ --domain domain_name ] 
-                /path/from/Magento /path/to/Magento\n";
-    echo "\nex. ./sitecopy -e --domain mefu.magemojo.io public_html/ dev/\n";
-            echo "\nex. ./sitecopy -n --user dford --db new_db 
-                --domain mefu2.magemojo.io public_html/ dev2/\n\n";
+    echo "usage: ./sitecopy -dehnuv [ --user db_user ] 
+        [ --db db_name ] [ --domain domain_name ] 
+        /path/from/Magento /path/to/Magento\n";
+    echo "\nex. ./sitecopy -e --domain mefu.magemojo.io 
+        /home/user/public_html/ /home/user/dev/\n";
+    echo "\nex. ./sitecopy -n --db new_db 
+        --domain mefu2.magemojo.io 
+        /home/user/public_html/ /home/user/dev2/\n\n";
     echo "-d domain name (same as --domain)\n";
     echo "-e existing\n";
     echo "-h help\n";
@@ -388,13 +403,13 @@ function createDb($dbname, $user, $host = 'localhost')
     $dbpass = createUser($user, $host);
     echo "Creating Database...\n";
     $output = shell_exec("mmcli database:create $dbname");
-    if (preg_match('/True/', $output)) {
+    if (preg_match('/success/', $output)) {
         $output = shell_exec(
             "mmcli database:user:privileges:update $dbname $user $host all"
         );
 
-        if (!preg_match('/True/', $output)) {
-            throw new \Exception("Could not set database privileges.");
+        if (!preg_match('/success/', $output)) {
+            throw new \Exception("Could not set database privileges. Message: " . $output . "\n");
              exit(1);
         }
     } else {
@@ -428,8 +443,8 @@ function createUser($user, $host)
     $output = shell_exec(
         "mmcli database:user:create $user $host $password $password"
     );
-    if (!preg_match('/True/', $output)) {
-        throw new \Exception("Could not create user");
+    if (!preg_match('/success/', $output)) {
+        throw new \Exception("Could not create user. Message: " . $output . "\n");
         exit(1);
     } 
 
@@ -452,8 +467,8 @@ function createVhost($src, $dest, $user, $domain)
     $vFlag = getVersion($src);
     $ip = getIP();
     $output = shell_exec("mmcli vhost:create $ip $user $dest '$domain'");
-    if (preg_match("/Error/", $output)) {
-        throw new \Exception($output . "Could not create vhost");
+    if (preg_match("/error/", $output)) {
+        throw new \Exception($output . "Could not create vhost. Message: " . $output . "\n");
         exit(1);
     }
     createDns($domain);
@@ -463,14 +478,14 @@ function createVhost($src, $dest, $user, $domain)
         $vname = str_replace('.', '_', $domain);
         echo "Setting PHP Version to 70...\n";
         $output = shell_exec("mmcli vhost:update:phpversion $vname 70");
-        if (preg_match("/Error/", $output)) {
-            throw new \Exception($output . " Could not change php version.");
+        if (preg_match("/error/", $output)) {
+            throw new \Exception($output . " Could not change php version. Message: " . $output . "\n");
             exit(1);
         }
         echo "Setting Template to Magento2.1...\n";
         $output = shell_exec("mmcli vhost:update:type $vname magento21");
-        if (preg_match("/Error/", $output)) {
-            throw new \Exception($output . " Could not set template");
+        if (preg_match("/error/", $output)) {
+            throw new \Exception($output . " Could not set template. Message: " . $output . "\n");
             exit(1);
         }
     }
@@ -711,7 +726,9 @@ function getDbCreds($path)
             'path' => $path
         );
         
-    } 
+    } else {
+        return null;
+    }
 }
 
 /**
