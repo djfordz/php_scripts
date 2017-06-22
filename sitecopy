@@ -657,15 +657,12 @@ function migrateDb($options, $fromCreds, $newDbCreds)
         echo 'Connection failed: ' . $e->getMessage();
     }
 
-    foreach ($dest->query("SELECT value FROM $destdb.$dbprefix" . "core_config_data WHERE path = 'web/unsecure/base_url';") as $row) {
-        $data = $row;
-    }
-    
-    $url = $data['value'];
-    $d = substr($url, 5);
-    if (isset($url) && isset($domain)) {
-        $dest->exec("UPDATE $dbprefix" . "core_config_data SET value = REPLACE(value, '$url', 'http://$domain/') WHERE value LIKE '%$d'");
-    }
+    $dest->exec("UPDATE $dbprefix" . "core_config_data SET value = 'http://$domain/' WHERE path = 'web/unsecure/base_url' or path = 'web/secure/base_url'");
+
+    $dest->exec("UPDATE $dbprefix" . "core_config_data SET value = '0' where path = 'web/secure/use_in_frontend' or path = 'web/secure/use_in_adminhtml'");
+
+    $dest->exec("UPDATE $dbprefix" . "core_config_data SET value = NULL where path = 'web/cookie/cookie_domain'");
+
     $dest = null;
 }
 
