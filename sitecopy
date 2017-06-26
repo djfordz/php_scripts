@@ -27,7 +27,7 @@ ini_set('register_argc_argv', '1');
  * Sets $options
  */
 $options = getopt(
-    'nehu:d:v:', array(
+    'nehiu:d:v:', array(
         'user:', 'domain:', 'db:', 'host:', 'from:', 'to:'
     )
 );
@@ -54,6 +54,7 @@ $src = realPath($options['from']);
 $dest = realPath($options['to']);
 
 
+
 $vmUser = getvmUser($dest);
 
 $fromCreds = getDbCreds($src);
@@ -68,7 +69,7 @@ if (array_key_exists('domain', $options)) {
 }
 
 if (array_key_exists('e', $options)) {
-    siteCopy($src, $dest);
+    siteCopy($src, $dest, $options);
     migrateDb($options, $fromCreds, $newDbCreds);
     addCreds($newDbCreds, $dest);
     echo "Setting directory ownership...\n";
@@ -77,13 +78,21 @@ if (array_key_exists('e', $options)) {
 
 if (array_key_exists('n', $options)) {
     createVhost($src, $dest, $vmUser, $domain);
-    siteCopy($src, $dest);
+    siteCopy($src, $dest, $options);
     migrateDb($options, $fromCreds, $newDbCreds);
     addCreds($newDbCreds, $dest);
     echo "Setting directory ownership...\n";
     chownRecursive($dest, $vmUser);
 }
 
+echo "Flushing Cache...\n";
+$flag = getVersion($dest);
+chdir($dest);
+if ($flag === 'M1') {
+    exec("sudo -u $vmUser n98-magerun cache:flush");
+} else if ($flag === 'M2') {
+    exec("sudo -u $vmUser n98-magerun2 cache:flush");
+}
 
 echo "Finished copying Magento Install\n";
 if (isset($newvuser)) {
@@ -151,6 +160,28 @@ function createDns($domain)
         exit(1);
     }
 }
+
+/**
+ * Test if same user
+ *
+ * @param string $src  source path
+ * @param string $dest destination path
+ *
+ * @return bool
+ */
+function testPath($src, $dest)
+{
+
+    $s = explode('/', realpath($src));
+    $d = explode('/', realpath($dest));
+
+    if ($s[2] != $d[2]) {
+        return true;
+    }
+
+    return false;
+}
+
 /**
  * Ensure user wants to use paths
  *
@@ -200,17 +231,24 @@ function checkPaths($options)
     }
 
     
+    if (!isset($src) && !isset($dest)) {
+        throw new \InvalidArgumentException('FROM path or TO path not specified.');
+        exit(1);
+    }
 
-    if (isset($src) && isset($dest)) {
-        $ans = readline("Copying the Magento Install FROM $src TO $dest? (y/N)");
-
-        if ($ans != 'Y' && $ans != 'y' && $ans != 'YES' && $ans != 'yes') {
-            echo "exiting...We will not be copying Magento Install\n";
+    if (!array_key_exists('i', $options)) {
+        $ans = readline("Copy site FROM $src TO $dest (y/N)");
+        if ($ans != 'Y' 
+            && $ans != 'y' 
+            && $ans != 'yes' 
+            && $ans != 'YES' 
+            && $ans != 'Yes'
+        ) {
+            echo "exiting...\n";
             exit(1);
         }
     } else {
-        throw new \InvalidArgumentException('FROM path or TO path not specified.');
-        exit(1);
+        echo "Copying site FROM $src/ TO $dest/\n\n";
     }
 
     return $user;
@@ -377,6 +415,7 @@ function help()
     echo "-d domain name (same as --domain)\n";
     echo "-e existing\n";
     echo "-h help\n";
+    echo "-i interactive for non-interactive use -i\n";
     echo "-n new\n";
     echo "-u database user (same as --user)\n";
     echo "-v database name (same as --db)\n";
@@ -494,33 +533,39 @@ function createVhost($src, $dest, $user, $domain)
 /**
  * Copies site using rsync
  *
- * @param string $src  path to Magento Install
- * @param string $dest path to Magento Install
+ * @param string $src     path to Magento Install
+ * @param string $dest    path to Magento Install
+ * @param array  $options command line options
  *
  * @return void
  */
-function siteCopy($src, $dest)
+function siteCopy($src, $dest, $options)
 {
     if (is_dir($dest)) {
         if (isDirEmpty($dest)) {
-            echo "Copying files...";
-            $result = cpdirRecursive($src, $dest);
+            echo "$dest/ is empty.\nCopying files...\n";
+            cpdirRecursive($src, $dest);
             echo "Finished copying files.\n";
         } else {
-            $ans = readline(
-                "Are you sure you want to remove files from $dest? (y/N)"
-            );
-            if ($ans != 'y' && $ans != 'Y' && $ans != 'YES' && $ans != 'yes') {
-                echo "Will not remove files. Exiting...";
-                exit(1);
-            } else {
-                echo "Removing Files...\n";
-                rmdirRecursive($dest, true);
-                createDestinationFolder($dest);
-                echo "Copying Files...\n";
-                cpdirRecursive($src, $dest); 
-                echo "Finished copying files\n";
-            } 
+            echo "$dest/ not empty...\n";
+            if (!array_key_exists('i', $options)) {
+                $ans = readline("Delete files in $dest? (y/N)");
+                if ($ans != 'y'
+                    && $ans != 'Y'
+                    && $ans != 'yes'
+                    && $ans != 'YES'
+                    && $ans != 'Yes'
+                ) {
+                    echo "Exiting....\n";
+                    exit(1);
+                }
+            }
+            echo "Removing Files in $dest/\n";
+            rmdirRecursive($dest, true);
+            createDestinationFolder($dest);
+            echo "Copying files...\n";
+            cpdirRecursive($src, $dest);
+            echo "Finished copying files.\n";
         }
     }
 }
@@ -625,28 +670,45 @@ function migrateDb($options, $fromCreds, $newDbCreds)
     );
 
     if (array_key_exists('e', $options)) {
-        echo "Dropping tables...\n";
-        $data = shell_exec(
-            "mysql -h$desthost $destdb -e \"show tables\" | awk \"{ print \$1 }\" | grep -v \"^Tables\""
+        echo "Deleting database $destdb ...\n";
+        $output = shell_exec(
+            "mmcli database:delete $destdb"
         ); 
-        $tables = explode("\n", $data);
-        exec("mysql -h$desthost -e \"SET GLOBAL FOREIGN_KEY_CHECKS=0\" $destdb");
-        foreach ($tables as $t) {
-            if (!empty($t)) {
-                exec("mysql -h$desthost -e \"drop table $t\" $destdb");
+        if (preg_match("/error/", $output)) {
+            throw new \Exception('Could not delete database. Message: ' . $output . "\n");
+            exit(1);
+        }
+
+        echo "Recreating database...\n";
+        $output = shell_exec("mmcli database:create $destdb");
+        if (preg_match("/error/", $output)) {
+            throw new \Exception("Could not create database. Message: " . $output . "\n");
+        } else {
+            echo "Setting db privileges...\n";
+            $output = shell_exec(
+                "mmcli database:user:privileges:update $destdb $destuser $desthost 'all privileges'"
+            );
+            if (preg_match("/error/", $output)) {
+                throw new \Exception("Could not set privileges for db user. Message: " . $output . "\n");
+                exit(1);
             }
         }
-        exec("mysql -h$desthost -e \"SET GLOBAL FOREIGN_KEY_CHECKS=1\" $destdb");
     }
     
     echo "Importing database...\n";
-    exec(
+    $output = shell_exec(
         "mysql -h$desthost $destdb < $dbfile"
     );
 
+    if (isset($output)) {
+        unlink($dbfile);
+        throw new \Exception('Could not import database. Message: ' . $output . "\n");
+        exit(1);
+    }
+
     unlink($dbfile);
 
-    echo "Changing base_urls...\n";
+    echo "Changing base_urls to 'http://".$domain."/'...\n";
     try {
         $dest = new \PDO(
             "mysql:dbname=$destdb;host=$desthost",
