@@ -202,11 +202,18 @@ function checkPaths($options)
     
 
     if (isset($src) && isset($dest)) {
-        $ans = readline("Copying the Magento Install FROM $src TO $dest? (y/N)");
+        if (!array_key_exists('i', $options) {
+            $ans = readline("Copying the Magento Install FROM $src TO $dest? (y/N)");
 
-        if ($ans != 'Y' && $ans != 'y' && $ans != 'YES' && $ans != 'yes') {
-            echo "exiting...We will not be copying Magento Install\n";
-            exit(1);
+            if (isset($ans) 
+                && $ans != 'Y' 
+                && $ans != 'y' 
+                && $ans != 'YES' 
+                && $ans != 'yes'
+            ) {
+                echo "exiting...We will not be copying Magento Install\n";
+                exit(1);
+            }
         }
     } else {
         throw new \InvalidArgumentException('FROM path or TO path not specified.');
@@ -377,6 +384,7 @@ function help()
     echo "-d domain name (same as --domain)\n";
     echo "-e existing\n";
     echo "-h help\n";
+    echo "-i interactive for non-interactive use -i\n"
     echo "-n new\n";
     echo "-u database user (same as --user)\n";
     echo "-v database name (same as --db)\n";
@@ -507,20 +515,27 @@ function siteCopy($src, $dest)
             $result = cpdirRecursive($src, $dest);
             echo "Finished copying files.\n";
         } else {
-            $ans = readline(
-                "Are you sure you want to remove files from $dest? (y/N)"
-            );
-            if ($ans != 'y' && $ans != 'Y' && $ans != 'YES' && $ans != 'yes') {
-                echo "Will not remove files. Exiting...";
-                exit(1);
-            } else {
-                echo "Removing Files...\n";
-                rmdirRecursive($dest, true);
-                createDestinationFolder($dest);
-                echo "Copying Files...\n";
-                cpdirRecursive($src, $dest); 
-                echo "Finished copying files\n";
-            } 
+            if (!array_key_exists('i', $options)) {
+                $ans = readline(
+                    "Are you sure you want to remove files from $dest? (y/N)"
+                );
+
+                if ($ans != 'y' 
+                    && $ans != 'Y' 
+                    && $ans != 'YES' 
+                    && $ans != 'yes'
+                ) {
+                    echo "Will not remove files. Exiting...";
+                    exit(1);
+                } 
+            }
+            
+            
+            echo "Removing Files in " . $dest . "...\n";
+            rmdirRecursive($dest, true);
+            createDestinationFolder($dest);
+            echo "Copying Files from " . $src . "to" . $dest . "...\n";
+            cpdirRecursive($src, $dest); 
         }
     }
 }
