@@ -625,24 +625,26 @@ function migrateDb($options, $fromCreds, $newDbCreds)
     );
 
     if (array_key_exists('e', $options)) {
-        echo "Dropping tables...\n";
-        $data = shell_exec(
-            "mysql -h$desthost $destdb -e \"show tables\" | awk \"{ print \$1 }\" | grep -v \"^Tables\""
+        echo "Deleting database...\n";
+        $output = shell_exec(
+            "mmcli database:delete $destdb"
         ); 
-        $tables = explode("\n", $data);
-        exec("mysql -h$desthost -e \"SET GLOBAL FOREIGN_KEY_CHECKS=0\" $destdb");
-        foreach ($tables as $t) {
-            if (!empty($t)) {
-                exec("mysql -h$desthost -e \"drop table $t\" $destdb");
-            }
+        if (preg_match("/error/", $output)) {
+            throw new \Exception('Could not delete database. Message: ' . $output . "\n");
+            exit(1);
         }
-        exec("mysql -h$desthost -e \"SET GLOBAL FOREIGN_KEY_CHECKS=1\" $destdb");
     }
     
     echo "Importing database...\n";
-    exec(
+    $output = shell_exec(
         "mysql -h$desthost $destdb < $dbfile"
     );
+
+    if (isset($output)) {
+        unlink($dbfile);
+        throw new \Exception('Could not import database. Message: ' . $output . "\n");
+        exit(1);
+    }
 
     unlink($dbfile);
 
