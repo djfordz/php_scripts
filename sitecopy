@@ -559,10 +559,10 @@ function siteCopy($src, $dest, $options)
             }
         }
 
-        echo "Removing Files in " . $dest . "/ ...\n";
+        echo "Removing Files in " . $dest . "/\n";
         rmdirRecursive($dest, true);
         createDestinationFolder($dest);
-        echo "Copying Files FROM " . $src . " TO " . $dest . "...\n";
+        echo "Copying Files FROM " . $src . "/ TO " . $dest . "/\n";
         cpdirRecursive($src, $dest);
     }
 }
