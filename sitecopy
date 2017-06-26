@@ -633,6 +633,19 @@ function migrateDb($options, $fromCreds, $newDbCreds)
             throw new \Exception('Could not delete database. Message: ' . $output . "\n");
             exit(1);
         }
+
+        $output = shell_exec("mmcli database:create $destdb");
+        if (preg_match("/error/", $output)) {
+            throw new \Exception("Could not create database. Message: " . $output . "\n");
+        } else {
+            $output = shell_exec(
+                "mmcli database:user:privileges:update $destdb $destuser $desthost 'all privileges'"
+            );
+            if (preg_match("/error/", $output)) {
+                throw new \Exception("Could not set privileges for db user. Message: " . $output . "\n");
+                exit(1);
+            }
+        }
     }
     
     echo "Importing database...\n";
