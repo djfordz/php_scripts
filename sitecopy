@@ -541,12 +541,13 @@ function siteCopy($src, $dest, $options)
 {
     if (is_dir($dest)) {
         if (isDirEmpty($dest)) {
-            echo "$dest is empty. Copying files...";
-            $result = cpdirRecursive($src, $dest);
+            echo "$dest/ is empty. Copying files...\n";
+            cpdirRecursive($src, $dest);
             echo "Finished copying files.\n";
         } else {
+            echo "$dest/ not empty...\n";
             if (!array_key_exists('i', $options)) {
-                $ans = readline("$dest not empty. Delete files in $dest? (y/N)");
+                $ans = readline("Delete files in $dest? (y/N)");
                 if ($ans != 'y'
                     && $ans != 'Y'
                     && $ans != 'yes'
@@ -557,13 +558,12 @@ function siteCopy($src, $dest, $options)
                     exit(1);
                 }
             }
+            echo "Removing Files in $dest/\n";
+            rmdirRecursive($dest, true);
+            createDestinationFolder($dest);
+            echo "Copying Files FROM $src/  TO $dest/\n";
+            cpdirRecursive($src, $dest);
         }
-
-        echo "Removing Files in " . $dest . "/\n";
-        rmdirRecursive($dest, true);
-        createDestinationFolder($dest);
-        echo "Copying Files FROM " . $src . "/ TO " . $dest . "/\n";
-        cpdirRecursive($src, $dest);
     }
 }
 
