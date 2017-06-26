@@ -247,6 +247,8 @@ function checkPaths($options)
             echo "exiting...\n";
             exit(1);
         }
+    } else {
+        echo "Copying site FROM $src/ TO $dest/";
     }
 
     return $user;
