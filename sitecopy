@@ -384,7 +384,7 @@ function help()
     echo "-d domain name (same as --domain)\n";
     echo "-e existing\n";
     echo "-h help\n";
-    echo "-i interactive for non-interactive use -i\n"
+    echo "-i interactive for non-interactive use -i\n";
     echo "-n new\n";
     echo "-u database user (same as --user)\n";
     echo "-v database name (same as --db)\n";
