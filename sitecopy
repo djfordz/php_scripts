@@ -202,7 +202,7 @@ function checkPaths($options)
     
 
     if (isset($src) && isset($dest)) {
-        if (!array_key_exists('i', $options) {
+        if (!array_key_exists('i', $options)) {
             $ans = readline("Copying the Magento Install FROM $src TO $dest? (y/N)");
 
             if (isset($ans) 
