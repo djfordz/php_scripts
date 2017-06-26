@@ -625,7 +625,7 @@ function migrateDb($options, $fromCreds, $newDbCreds)
     );
 
     if (array_key_exists('e', $options)) {
-        echo "Deleting database...\n";
+        echo "Deleting database " . $destdb . "...\n";
         $output = shell_exec(
             "mmcli database:delete $destdb"
         ); 
@@ -634,10 +634,12 @@ function migrateDb($options, $fromCreds, $newDbCreds)
             exit(1);
         }
 
+        echo "Recreating database " . $destdb . "\n";
         $output = shell_exec("mmcli database:create $destdb");
         if (preg_match("/error/", $output)) {
             throw new \Exception("Could not create database. Message: " . $output . "\n");
         } else {
+            echo "Setting db user privileges on " . $destdb . "to " . $destuser . " \n";
             $output = shell_exec(
                 "mmcli database:user:privileges:update $destdb $destuser $desthost 'all privileges'"
             );
@@ -661,7 +663,7 @@ function migrateDb($options, $fromCreds, $newDbCreds)
 
     unlink($dbfile);
 
-    echo "Changing base_urls...\n";
+    echo "Changing base_urls to 'http://".$domain."/'...\n";
     try {
         $dest = new \PDO(
             "mysql:dbname=$destdb;host=$desthost",
