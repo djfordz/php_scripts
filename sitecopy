@@ -543,7 +543,7 @@ function siteCopy($src, $dest, $options)
 {
     if (is_dir($dest)) {
         if (isDirEmpty($dest)) {
-            echo "$dest/ is empty. Copying files...\n";
+            echo "$dest/ is empty.\nCopying files...\n";
             cpdirRecursive($src, $dest);
             echo "Finished copying files.\n";
         } else {
