@@ -405,7 +405,7 @@ function createDb($dbname, $user, $host = 'localhost')
     $output = shell_exec("mmcli database:create $dbname");
     if (preg_match('/success/', $output)) {
         $output = shell_exec(
-            "mmcli database:user:privileges:update $dbname $user $host all"
+            "mmcli database:user:privileges:update $dbname $user $host 'all privileges'"
         );
 
         if (!preg_match('/success/', $output)) {
