@@ -560,7 +560,7 @@ function siteCopy($src, $dest, $options)
                     exit(1);
                 }
             }
-            echo "Removing Files in $dest/\n";
+            echo "Removing Files...\n";
             rmdirRecursive($dest, true);
             createDestinationFolder($dest);
             echo "Copying files...\n";
