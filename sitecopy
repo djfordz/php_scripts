@@ -563,8 +563,9 @@ function siteCopy($src, $dest, $options)
             echo "Removing Files in $dest/\n";
             rmdirRecursive($dest, true);
             createDestinationFolder($dest);
-            echo "Copying Files FROM $src/  TO $dest/\n";
+            echo "Copying files...\n";
             cpdirRecursive($src, $dest);
+            echo "Finished copying files.\n";
         }
     }
 }
@@ -678,12 +679,12 @@ function migrateDb($options, $fromCreds, $newDbCreds)
             exit(1);
         }
 
-        echo "Recreating database $destdb ...\n";
+        echo "Recreating database...\n";
         $output = shell_exec("mmcli database:create $destdb");
         if (preg_match("/error/", $output)) {
             throw new \Exception("Could not create database. Message: " . $output . "\n");
         } else {
-            echo "Setting db user privileges on $destdb \n";
+            echo "Setting db privileges...\n";
             $output = shell_exec(
                 "mmcli database:user:privileges:update $destdb $destuser $desthost 'all privileges'"
             );
