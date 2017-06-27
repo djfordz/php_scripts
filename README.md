@@ -37,14 +37,14 @@ or
 
 `./sitecopy -e -d dev.magemojo.io /home/user/public_html /home/user/dev/`
 
-
+Use flag -i for non-interactive mode. *note: you will not get any prompt when deleting files.*
 
 ./sitecopy -h for full help
 
-If you experience any issues or bugs, please report to david@magemojo.com
+
+
+*If you experience any issues or bugs, please report to david@magemojo.com*
 
 #### Future planned improvements
-
-flag to make non-interactive mode.
-check disk space to ensure space exists for new instance.
-enable script to make copies without logging into servers individually. can have on local system and will remotely create dev copies automatically, thus avoiding to have to upload script to server to do a site copy.
+1  check disk space to ensure space exists for new instance.
+2  ssh server to server copy.
