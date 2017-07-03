@@ -681,66 +681,66 @@ function migrateDb($options, $fromCreds, $newDbCreds)
             echo "exiting...\n";
             exit(1);
         }
-    } else {
+    } 
 
-        if (array_key_exists('e', $options)) {
-            echo "Deleting database $destdb ...\n";
-            $output = shell_exec(
-                "mmcli database:delete $destdb"
-            ); 
-            if (preg_match("/error/", $output)) {
-                throw new \Exception('Could not delete database. Message: ' . $output . "\n");
-                exit(1);
-            }
-
-            echo "Recreating database...\n";
-            $output = shell_exec("mmcli database:create $destdb");
-            if (preg_match("/error/", $output)) {
-                throw new \Exception("Could not create database. Message: " . $output . "\n");
-            } else {
-                echo "Setting db privileges...\n";
-                $output = shell_exec(
-                    "mmcli database:user:privileges:update $destdb $destuser $desthost 'all privileges'"
-                );
-                if (preg_match("/error/", $output)) {
-                    throw new \Exception("Could not set privileges for db user. Message: " . $output . "\n");
-                    exit(1);
-                }
-            }
-        }
-        
-        echo "Importing database...\n";
+    if (array_key_exists('e', $options)) {
+        echo "Deleting database $destdb ...\n";
         $output = shell_exec(
-            "mysql -h$desthost $destdb < $dbfile"
-        );
-
-        if (isset($output)) {
-            unlink($dbfile);
-            throw new \Exception('Could not import database. Message: ' . $output . "\n");
+            "mmcli database:delete $destdb"
+        ); 
+        if (preg_match("/error/", $output)) {
+            throw new \Exception('Could not delete database. Message: ' . $output . "\n");
             exit(1);
         }
 
-        unlink($dbfile);
-
-        echo "Changing base_urls to 'http://".$domain."/'...\n";
-        try {
-            $dest = new \PDO(
-                "mysql:dbname=$destdb;host=$desthost",
-                $destuser,
-                $destpass
+        echo "Recreating database...\n";
+        $output = shell_exec("mmcli database:create $destdb");
+        if (preg_match("/error/", $output)) {
+            throw new \Exception("Could not create database. Message: " . $output . "\n");
+        } else {
+            echo "Setting db privileges...\n";
+            $output = shell_exec(
+                "mmcli database:user:privileges:update $destdb $destuser $desthost 'all privileges'"
             );
-        } catch (\PDOException $e) {
-            echo 'Connection failed: ' . $e->getMessage();
+            if (preg_match("/error/", $output)) {
+                throw new \Exception("Could not set privileges for db user. Message: " . $output . "\n");
+                exit(1);
+            }
         }
-
-        $dest->exec("UPDATE $dbprefix" . "core_config_data SET value = 'http://$domain/' WHERE path = 'web/unsecure/base_url' or path = 'web/secure/base_url'");
-
-        $dest->exec("UPDATE $dbprefix" . "core_config_data SET value = '0' where path = 'web/secure/use_in_frontend' or path = 'web/secure/use_in_adminhtml'");
-
-        $dest->exec("UPDATE $dbprefix" . "core_config_data SET value = NULL where path = 'web/cookie/cookie_domain'");
-
-        $dest = null;
     }
+    
+    echo "Importing database...\n";
+    $output = shell_exec(
+        "mysql -h$desthost $destdb < $dbfile"
+    );
+
+    if (isset($output)) {
+        unlink($dbfile);
+        throw new \Exception('Could not import database. Message: ' . $output . "\n");
+        exit(1);
+    }
+
+    unlink($dbfile);
+
+    echo "Changing base_urls to 'http://".$domain."/'...\n";
+    try {
+        $dest = new \PDO(
+            "mysql:dbname=$destdb;host=$desthost",
+            $destuser,
+            $destpass
+        );
+    } catch (\PDOException $e) {
+        echo 'Connection failed: ' . $e->getMessage();
+    }
+
+    $dest->exec("UPDATE $dbprefix" . "core_config_data SET value = 'http://$domain/' WHERE path = 'web/unsecure/base_url' or path = 'web/secure/base_url'");
+
+    $dest->exec("UPDATE $dbprefix" . "core_config_data SET value = '0' where path = 'web/secure/use_in_frontend' or path = 'web/secure/use_in_adminhtml'");
+
+    $dest->exec("UPDATE $dbprefix" . "core_config_data SET value = NULL where path = 'web/cookie/cookie_domain'");
+
+    $dest = null;
+    
 }
 
 /**
