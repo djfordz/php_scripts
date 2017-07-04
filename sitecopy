@@ -669,20 +669,6 @@ function migrateDb($options, $fromCreds, $newDbCreds)
         "mysqldump -h$dbhost $dbname > $dbfile"
     );
 
-    if (!array_key_exists('i', $options)) {
-        $ans = readline("Delete database $destdb? (y/N)");
-
-        if ($ans != 'Y' 
-            && $ans != 'y' 
-            && $ans != 'yes' 
-            && $ans != 'YES' 
-            && $ans != 'Yes'
-        ) {
-            echo "exiting...\n";
-            exit(1);
-        }
-    } 
-
     if (array_key_exists('e', $options)) {
         echo "Deleting database $destdb ...\n";
         $output = shell_exec(
@@ -710,9 +696,14 @@ function migrateDb($options, $fromCreds, $newDbCreds)
     }
     
     echo "Importing database...\n";
-    $output = shell_exec(
-        "mysql -h$desthost $destdb < $dbfile"
-    );
+    try {
+        $output = shell_exec(
+            "mysql -h$desthost $destdb < $dbfile"
+        );
+    } catch (\Exception $e) {
+        echo $e->message;
+        exit(1);
+    }
 
     if (isset($output)) {
         unlink($dbfile);
