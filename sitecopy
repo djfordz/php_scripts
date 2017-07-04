@@ -669,30 +669,21 @@ function migrateDb($options, $fromCreds, $newDbCreds)
         "mysqldump -h$dbhost $dbname > $dbfile"
     );
 
-    if (array_key_exists('e', $options)) {
-        echo "Deleting database $destdb ...\n";
-        $output = shell_exec(
-            "mmcli database:delete $destdb"
+    if (array_key_exists('e', $options) 
+        && (!array_key_exists('v', $options) || !array_key_exists('db', $options))
+    ) {
+        echo "Dropping tables...\n";
+        $data = shell_exec(
+            "mysql -h$desthost $destdb -e \"show tables\" | awk \"{ print \$1 }\" | grep -v \"^Tables\""
         ); 
-        if (preg_match("/error/", $output)) {
-            throw new \Exception('Could not delete database. Message: ' . $output . "\n");
-            exit(1);
-        }
-
-        echo "Recreating database...\n";
-        $output = shell_exec("mmcli database:create $destdb");
-        if (preg_match("/error/", $output)) {
-            throw new \Exception("Could not create database. Message: " . $output . "\n");
-        } else {
-            echo "Setting db privileges...\n";
-            $output = shell_exec(
-                "mmcli database:user:privileges:update $destdb $destuser $desthost 'all privileges'"
-            );
-            if (preg_match("/error/", $output)) {
-                throw new \Exception("Could not set privileges for db user. Message: " . $output . "\n");
-                exit(1);
+        $tables = explode("\n", $data);
+        exec("mysql -h$desthost -e \"SET GLOBAL FOREIGN_KEY_CHECKS=0\" $destdb");
+        foreach ($tables as $t) {
+            if (!empty($t)) {
+                exec("mysql -h$desthost -e \"drop table $t\" $destdb");
             }
         }
+        exec("mysql -h$desthost -e \"SET GLOBAL FOREIGN_KEY_CHECKS=1\" $destdb");
     }
     
     echo "Importing database...\n";
