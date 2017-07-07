@@ -1028,9 +1028,9 @@ function cpdirRecursive($src, $dest)
         ) as $item
     ) {
         if ($item->isDir()) {
-            mkdir($dest . DIRECTORY_SEPARATOR . $iterator->getSubPathName());
+            @mkdir($dest . DIRECTORY_SEPARATOR . $iterator->getSubPathName());
         } else {
-            copy($item, $dest . DIRECTORY_SEPARATOR . $iterator->getSubPathName());
+            @copy($item, $dest . DIRECTORY_SEPARATOR . $iterator->getSubPathName());
         }
     } 
 }
