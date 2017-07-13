@@ -4,7 +4,7 @@ Script will differentiate whether it is M1 or M2 site, and will adjust according
 
 Generally I would use OO principles and methods to create tools, however, due for the need to upload to each individual server, I have created a script of only one file.
 
-#### To copy to server, simply use `wget -c https://github.com/djfordz/php_scripts/master/sitecopy`
+#### To copy to server, simply use `wget -c https://raw.github.com/djfordz/php_scripts/master/sitecopy`
 
 ssh into server as normal, su as root `sudo su`
 
