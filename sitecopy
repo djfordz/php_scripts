@@ -482,6 +482,7 @@ function createUser($user, $host)
     passthru(
         "mmcli database:user:create $user $host $password $password", $output
     );
+    print_r($output);
     if (!preg_match('/success/', $output)) {
         throw new \Exception("Could not create user. Message: " . $output . "\n");
         exit(1);
