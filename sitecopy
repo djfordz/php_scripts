@@ -154,7 +154,7 @@ function createDns($domain)
 {
     echo "Creating DNS...\n";
     $ip = exec('curl http://ipecho.net/plain; echo');
-    $output = shell_exec("mmcli dns:create $domain $ip");
+    passthru("mmcli dns:create $domain $ip", $output);
     if (preg_match("/error/", $output)) {
         throw new \Exception($output . 'Could not create DNS Entry. Message: ' . $output . "\n");
         exit(1);
@@ -264,7 +264,7 @@ function checkPaths($options)
 function createVUser($user)
 {
     $password = randomPass(12);
-    $output = shell_exec("mmcli user:create $user $password");
+    passthru("mmcli user:create $user $password", $output);
     if (preg_match('/error/', $output)) {
         throw new \Exception('Could not create vhost user. Message: ' . $output . "\n");
         exit(1);
@@ -441,10 +441,10 @@ function createDb($dbname, $user, $host = 'localhost')
 
     $dbpass = createUser($user, $host);
     echo "Creating Database...\n";
-    $output = shell_exec("mmcli database:create $dbname");
+    passthru("mmcli database:create $dbname", $output);
     if (preg_match('/success/', $output)) {
-        $output = shell_exec(
-            "mmcli database:user:privileges:update $dbname $user $host 'all privileges'"
+        passthru(
+            "mmcli database:user:privileges:update $dbname $user $host 'all privileges'", $output
         );
 
         if (!preg_match('/success/', $output)) {
@@ -479,8 +479,8 @@ function createUser($user, $host)
 {
     echo "Creating Database User...\n";
     $password = randomPass(12);
-    $output = shell_exec(
-        "mmcli database:user:create $user $host $password $password"
+    passthru(
+        "mmcli database:user:create $user $host $password $password", $output
     );
     if (!preg_match('/success/', $output)) {
         throw new \Exception("Could not create user. Message: " . $output . "\n");
@@ -505,7 +505,7 @@ function createVhost($src, $dest, $user, $domain)
     echo "Creating vhost...\n";
     $vFlag = getVersion($src);
     $ip = getIP();
-    $output = shell_exec("mmcli vhost:create $ip $user $dest '$domain'");
+    passthru("mmcli vhost:create $ip $user $dest '$domain'", $output);
     if (preg_match("/error/", $output)) {
         throw new \Exception($output . "Could not create vhost. Message: " . $output . "\n");
         exit(1);
@@ -516,13 +516,13 @@ function createVhost($src, $dest, $user, $domain)
     if (isset($vFlag) && $vFlag === 'M2') {
         $vname = str_replace('.', '_', $domain);
         echo "Setting PHP Version to 70...\n";
-        $output = shell_exec("mmcli vhost:update:phpversion $vname 70");
+        passthru("mmcli vhost:update:phpversion $vname 70", $output);
         if (preg_match("/error/", $output)) {
             throw new \Exception($output . " Could not change php version. Message: " . $output . "\n");
             exit(1);
         }
         echo "Setting Template to Magento2.1...\n";
-        $output = shell_exec("mmcli vhost:update:type $vname magento21");
+        passthru("mmcli vhost:update:type $vname magento21", $output);
         if (preg_match("/error/", $output)) {
             throw new \Exception($output . " Could not set template. Message: " . $output . "\n");
             exit(1);
@@ -531,7 +531,7 @@ function createVhost($src, $dest, $user, $domain)
 }
 
 /**
- * Copies site using rsync
+ * Copies site using php recursive copy.
  *
  * @param string $src     path to Magento Install
  * @param string $dest    path to Magento Install
@@ -663,7 +663,7 @@ function migrateDb($options, $fromCreds, $newDbCreds)
     }
 
     $tstamp = date("Y-d-M H:i:s");
-    $dbfile = "/home/" . $dbname . ".sql";
+    $dbfile = "/home/" . $dbname . $tstamp . ".sql";
 
     exec(
         "mysqldump -h$dbhost $dbname > $dbfile"
@@ -689,8 +689,8 @@ function migrateDb($options, $fromCreds, $newDbCreds)
     
     echo "Importing database...\n";
     try {
-        $output = shell_exec(
-            "mysql -h$desthost $destdb < $dbfile"
+        passthru(
+            "mysql -h$desthost $destdb < $dbfile", $output
         );
     } catch (\Exception $e) {
         echo $e->message;
@@ -766,7 +766,8 @@ function getDbCreds($path)
             $i++;
         }
         
-        return array('dbprefix' => $dbprefix, 
+        return array(
+            'dbprefix' => $dbprefix, 
             'dbname' => $dbname, 
             'dbuser' => $dbuser, 
             'dbpass' => $dbpass, 

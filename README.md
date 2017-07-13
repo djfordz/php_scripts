@@ -4,9 +4,9 @@ Script will differentiate whether it is M1 or M2 site, and will adjust according
 
 Generally I would use OO principles and methods to create tools, however, due for the need to upload to each individual server, I have created a script of only one file.
 
-To copy to server, with freeIPA installed simply use `scp sitecopy server.magemojo.com:/tmp`
+#### To copy to server, simply use `wget -c https://github.com/djfordz/php_scripts/master/sitecopy`
 
-ssh into server as normal, su as root `sudo su` and copy script to root home `cp /tmp/sitecopy ~`
+ssh into server as normal, su as root `sudo su`
 
 Although the sitecopy script can be ran from any directory and can use relative paths, I find running from root home and just using absolute paths to be easiest.
 
@@ -41,7 +41,11 @@ Use flag -i for non-interactive mode. *note: you will not get any prompt when de
 
 ./sitecopy -h for full help
 
+If you want to create a new database instead of importing into existing when copying to an existing instance, you can add the --db or -v flag and a new database name, this overrides getting the database creds from local.xml or env.php. example:
 
+`./sitecopy -e -d dev.magemojo.io -v new_db /home/user/old/ /home/user/new/
+
+Now instead of emptying tables of existing database, it will just create a new database and user.
 
 *If you experience any issues or bugs, please report to david@magemojo.com*
 
