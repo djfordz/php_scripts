@@ -662,8 +662,8 @@ function migrateDb($options, $fromCreds, $newDbCreds)
         $dbprefix = $fromCreds['dbprefix'];
     }
 
-    $tstamp = date("Y-d-M H:i:s");
-    $dbfile = "/home/" . $dbname . $tstamp . ".sql";
+    $tstamp = date();
+    $dbfile = "/home/$dbname.$tstamp.sql";
 
     exec(
         "mysqldump -h$dbhost $dbname > $dbfile"
