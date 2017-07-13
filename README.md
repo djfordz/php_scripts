@@ -4,14 +4,16 @@ Script will differentiate whether it is M1 or M2 site, and will adjust according
 
 Generally I would use OO principles and methods to create tools, however, due for the need to upload to each individual server, I have created a script of only one file.
 
-#### To copy to server, simply use `wget -c https://raw.github.com/djfordz/php_scripts/master/sitecopy`
-
 ssh into server as normal, su as root `sudo su`
 
-Although the sitecopy script can be ran from any directory and can use relative paths, I find running from root home and just using absolute paths to be easiest.
+#### To copy to server, simply use `wget -c https://raw.github.com/djfordz/php_scripts/master/sitecopy`
+
+make script executable `chmod +x sitecopy`
 
 
 ### usage: 
+
+Although the sitecopy script can be ran from any directory and can use relative paths, I find running from root home and just using absolute paths to be easiest.
 
 #### Create and copy to new dev instance will create new vhost, dns, new database, new database user, and if needed vm user.
 
