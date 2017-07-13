@@ -154,7 +154,7 @@ function createDns($domain)
 {
     echo "Creating DNS...\n";
     $ip = exec('curl http://ipecho.net/plain; echo');
-    passthru("mmcli dns:create $domain $ip", $output);
+    $output = shell_exec("mmcli dns:create $domain $ip");
     if (preg_match("/error/", $output)) {
         throw new \Exception($output . 'Could not create DNS Entry. Message: ' . $output . "\n");
         exit(1);
@@ -264,7 +264,7 @@ function checkPaths($options)
 function createVUser($user)
 {
     $password = randomPass(12);
-    passthru("mmcli user:create $user $password", $output);
+    $output = shell_exec("mmcli user:create $user $password");
     if (preg_match('/error/', $output)) {
         throw new \Exception('Could not create vhost user. Message: ' . $output . "\n");
         exit(1);
@@ -441,10 +441,10 @@ function createDb($dbname, $user, $host = 'localhost')
 
     $dbpass = createUser($user, $host);
     echo "Creating Database...\n";
-    passthru("mmcli database:create $dbname", $output);
+    $output = shell_exec("mmcli database:create $dbname");
     if (preg_match('/success/', $output)) {
-        passthru(
-            "mmcli database:user:privileges:update $dbname $user $host 'all privileges'", $output
+        $output = shell_exec(
+            "mmcli database:user:privileges:update $dbname $user $host 'all privileges'"
         );
 
         if (!preg_match('/success/', $output)) {
@@ -479,10 +479,9 @@ function createUser($user, $host)
 {
     echo "Creating Database User...\n";
     $password = randomPass(12);
-    passthru(
-        "mmcli database:user:create $user $host $password $password", $output
+    $output = shell_exec(
+        "mmcli database:user:create $user $host $password $password"
     );
-    print_r($output);
     if (!preg_match('/success/', $output)) {
         throw new \Exception("Could not create user. Message: " . $output . "\n");
         exit(1);
@@ -506,7 +505,7 @@ function createVhost($src, $dest, $user, $domain)
     echo "Creating vhost...\n";
     $vFlag = getVersion($src);
     $ip = getIP();
-    passthru("mmcli vhost:create $ip $user $dest '$domain'", $output);
+    $output = shell_exec("mmcli vhost:create $ip $user $dest '$domain'");
     if (preg_match("/error/", $output)) {
         throw new \Exception($output . "Could not create vhost. Message: " . $output . "\n");
         exit(1);
@@ -517,13 +516,13 @@ function createVhost($src, $dest, $user, $domain)
     if (isset($vFlag) && $vFlag === 'M2') {
         $vname = str_replace('.', '_', $domain);
         echo "Setting PHP Version to 70...\n";
-        passthru("mmcli vhost:update:phpversion $vname 70", $output);
+        $output = shell_exec("mmcli vhost:update:phpversion $vname 70");
         if (preg_match("/error/", $output)) {
             throw new \Exception($output . " Could not change php version. Message: " . $output . "\n");
             exit(1);
         }
         echo "Setting Template to Magento2.1...\n";
-        passthru("mmcli vhost:update:type $vname magento21", $output);
+        $output = shell_exec("mmcli vhost:update:type $vname magento21");
         if (preg_match("/error/", $output)) {
             throw new \Exception($output . " Could not set template. Message: " . $output . "\n");
             exit(1);
@@ -663,7 +662,7 @@ function migrateDb($options, $fromCreds, $newDbCreds)
         $dbprefix = $fromCreds['dbprefix'];
     }
 
-    $tstamp = date();
+    $tstamp = time();
     $dbfile = "/home/$dbname.$tstamp.sql";
 
     exec(
@@ -690,8 +689,8 @@ function migrateDb($options, $fromCreds, $newDbCreds)
     
     echo "Importing database...\n";
     try {
-        passthru(
-            "mysql -h$desthost $destdb < $dbfile", $output
+        $output = shell_exec(
+            "mysql -h$desthost $destdb < $dbfile"
         );
     } catch (\Exception $e) {
         echo $e->message;
