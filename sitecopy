@@ -674,7 +674,7 @@ function migrateDb($options, $fromCreds, $newDbCreds)
             echo "Dropping tables...\n";
 
             $data = shell_exec(
-                "mysql -h$desthost $destdb -e \"show tables\" | awk \"{ print \$1 }\" | grep -v \"^Tables\" 2>&1"
+                "mysql -h$desthost $destdb -e \"show tables\" | awk \"{ print \$1 }\" | grep -v \"^Tables\""
             ); 
             $tables = explode("\n", $data);
             exec("mysql -h$desthost -e \"SET GLOBAL FOREIGN_KEY_CHECKS=0\" $destdb");
