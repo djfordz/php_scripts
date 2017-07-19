@@ -743,8 +743,9 @@ function migrateDb($options, $fromCreds, $newDbCreds)
 
     $output = $dest->exec("UPDATE $dbprefix" . "core_config_data SET value = NULL where path = 'web/cookie/cookie_domain'");
 
-    $output = $dest->exec("TRUNCATE $dbprefix". "log_visitor");
+    $output = $dest->exec("TRUNCATE $dbprefix" . "log_visitor");
 
+    $output = $dest->exec("TRUNCATE $dbprefix" . "log_visitor_info");
     $dest = null;
 
     if($output != 0) {
