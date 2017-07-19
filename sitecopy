@@ -70,19 +70,19 @@ if (array_key_exists('domain', $options)) {
 
 if (array_key_exists('e', $options)) {
     siteCopy($src, $dest, $options);
-    migrateDb($options, $fromCreds, $newDbCreds);
-    addCreds($newDbCreds, $dest);
     echo "Setting directory ownership...\n";
     chownRecursive($dest, $vmUser);
+    migrateDb($options, $fromCreds, $newDbCreds);
+    addCreds($newDbCreds, $dest);
 }
 
 if (array_key_exists('n', $options)) {
     createVhost($src, $dest, $vmUser, $domain);
     siteCopy($src, $dest, $options);
-    migrateDb($options, $fromCreds, $newDbCreds);
-    addCreds($newDbCreds, $dest);
     echo "Setting directory ownership...\n";
     chownRecursive($dest, $vmUser);
+    migrateDb($options, $fromCreds, $newDbCreds);
+    addCreds($newDbCreds, $dest);
 }
 
 echo "Flushing Cache...\n";
@@ -665,13 +665,18 @@ function migrateDb($options, $fromCreds, $newDbCreds)
     $tstamp = time();
     $dbfile = "/home/$dbname.$tstamp.sql.gz";
 
-    exec(
-        "mysqldump --all-databases --quick --lock-tables=false -h$dbhost $dbname | gzip > $dbfile"
+    $output = shell_exec(
+        "mysqldump --quick --lock-tables=false -h$dbhost $dbname | gzip > $dbfile"
     );
+
+    if (preg_match("/error/", $output)) {
+	throw new \Exception($output . " Could not dump database. Message: " . $output . "\n");
+	exit(1);
+    }
 
     if (array_key_exists('e', $options)) { 
         if (!array_key_exists('v', $options) && !array_key_exists('db', $options)) {
-            echo "Dropping database...\n";
+            echo "Dropping database $destdb...\n";
 
             $output = shell_exec(
                 "mmcli database:delete $destdb 2>&1"
@@ -732,14 +737,19 @@ function migrateDb($options, $fromCreds, $newDbCreds)
         echo 'Connection failed: ' . $e->getMessage();
     }
 
-    $dest->exec("UPDATE $dbprefix" . "core_config_data SET value = 'http://$domain/' WHERE path = 'web/unsecure/base_url' or path = 'web/secure/base_url'");
+    $output = $dest->exec("UPDATE $dbprefix" . "core_config_data SET value = 'http://$domain/' WHERE path = 'web/unsecure/base_url' or path = 'web/secure/base_url'");
 
-    $dest->exec("UPDATE $dbprefix" . "core_config_data SET value = '0' where path = 'web/secure/use_in_frontend' or path = 'web/secure/use_in_adminhtml'");
+    $output = $dest->exec("UPDATE $dbprefix" . "core_config_data SET value = '0' where path = 'web/secure/use_in_frontend' or path = 'web/secure/use_in_adminhtml'");
 
-    $dest->exec("UPDATE $dbprefix" . "core_config_data SET value = NULL where path = 'web/cookie/cookie_domain'");
+    $output = $dest->exec("UPDATE $dbprefix" . "core_config_data SET value = NULL where path = 'web/cookie/cookie_domain'");
+
+    $output = $dest->exec("TRUNCATE $dbprefix". "log_visitor");
 
     $dest = null;
-    
+
+    if($output != 0) {
+	echo "Could not change database urls, you will need to do this manually...;";
+    }
 }
 
 /**
