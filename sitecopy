@@ -706,7 +706,7 @@ function migrateDb($options, $fromCreds, $newDbCreds)
     echo "Importing database...\n";
     try {
         $output = shell_exec(
-            "mysql -h$desthost $destdb < $dbfile 2>&1"
+            "zcat $dbfile | mysql -h$desthost $destdb 2>&1"
         );
     } catch (\Exception $e) {
         echo "Could not import database " . $e->message . "Message: $output\n";
