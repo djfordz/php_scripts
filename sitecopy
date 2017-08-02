@@ -191,23 +191,21 @@ function testPath($src, $dest)
  */
 function checkPaths($options) 
 {
-    $src = realpath($options['from']);
+    $src = $options['from'];
     $dest = $options['to'];
-    $s = explode('/', $src);
-    $d = explode('/', $dest);
+    $s = explode('/', realpath($src));
+    
 
     if ($s[1] !== 'home') {
         echo "Src not home directory.\n";
         exit(1);
-    } else if ($d[0] !== 'home' 
-        || $d[1] !== 'home'
-    ) { 
-        if (!is_dir($dest)) {
-            createDestinationFolder($dest);
-        }         
-    }
+    } 
 
-    $dest = realpath($dest);
+    if (!is_dir($dest)) {
+        createDestinationFolder($dest);
+    }         
+
+
     $d = explode('/', realpath($dest));
 
     if ($d[1] !== 'home') {
@@ -223,14 +221,11 @@ function checkPaths($options)
         }
     } 
     
-    
-
     if (!is_dir($src) && !isDirEmpty($src)) {
         echo "FROM path is not valid\n";
         exit(1);
     }
 
-    
     if (!isset($src) && !isset($dest)) {
         throw new \InvalidArgumentException('FROM path or TO path not specified.');
         exit(1);
@@ -266,8 +261,7 @@ function createVUser($user)
     $password = randomPass(12);
     $output = shell_exec("mmcli user:create $user $password 2>&1");
     if (preg_match('/error/', $output)) {
-        throw new \Exception('Could not create vhost user. Message: ' . $output . "\n");
-        exit(1);
+        echo "Vhost user already exists continuing...\n";
     }
 
     return array($user, $password);
@@ -670,8 +664,8 @@ function migrateDb($options, $fromCreds, $newDbCreds)
     );
 
     if (preg_match("/error/", $output)) {
-	throw new \Exception($output . " Could not dump database. Message: " . $output . "\n");
-	exit(1);
+        throw new \Exception($output . " Could not dump database. Message: " . $output . "\n");
+        exit(1);
     }
 
     if (array_key_exists('e', $options)) { 
@@ -748,8 +742,8 @@ function migrateDb($options, $fromCreds, $newDbCreds)
     $output = $dest->exec("TRUNCATE $dbprefix" . "log_visitor_info");
     $dest = null;
 
-    if($output != 0) {
-	echo "Could not change database urls, you will need to do this manually...;";
+    if ($output != 0) {
+        echo "Could not change database urls, you will need to do this manually...;";
     }
 }
 
