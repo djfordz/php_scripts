@@ -656,6 +656,11 @@ function migrateDb($options, $fromCreds, $newDbCreds)
         $dbprefix = $fromCreds['dbprefix'];
     }
 
+    if ($dbname == $destdb) {
+        throw new \Exception("TO Database is same as FROM database, you will overwrite live database!!!! Exiting....\n");
+        exit(1);
+    }
+
     $tstamp = time();
     $dbfile = "/home/$dbname.$tstamp.sql.gz";
 
