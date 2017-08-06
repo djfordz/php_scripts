@@ -657,7 +657,7 @@ function migrateDb($options, $fromCreds, $newDbCreds)
     }
 
     if ($dbname == $destdb) {
-        throw new \Exception("TO Database is same as FROM database, you will overwrite live database!!!! Exiting....\n");
+        throw new \Exception("TO Database $dbname is same as FROM $destdb database, you will overwrite live database!!!! Exiting....\n");
         exit(1);
     }
 
