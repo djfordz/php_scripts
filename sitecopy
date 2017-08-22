@@ -156,8 +156,7 @@ function createDns($domain)
     $ip = exec('curl http://ipecho.net/plain; echo');
     $output = shell_exec("mmcli dns:create $domain $ip 2>&1");
     if (preg_match("/error/", $output)) {
-        throw new \Exception($output . 'Could not create DNS Entry. Message: ' . $output . "\n");
-        exit(1);
+        echo "DNS already created...\n";
     }
 }
 
@@ -501,8 +500,7 @@ function createVhost($src, $dest, $user, $domain)
     $ip = getIP();
     $output = shell_exec("mmcli vhost:create $ip $user $dest '$domain' 2>&1");
     if (preg_match("/error/", $output)) {
-        throw new \Exception($output . "Could not create vhost. Message: " . $output . "\n");
-        exit(1);
+        echo "vhost already created...\n";
     }
     createDns($domain);
     
