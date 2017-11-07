@@ -487,7 +487,7 @@ function _installMagentoTwo($domain, Array $db, $adminPass, $userName)
     $dbpass = $db['dbpass'];
     $dbhost = $db['dbhost'];
 
-    shell_exec("sudo -u $userName php70 bin/magento setup:install --db-host $dbhost --db-user $dbuser --db-password $dbpass --base-url http://$domain/ --use-secure 0 --use-secure-admin 0 --use-rewrites 1 --language en_US --timezone America/Chicago --currency USD --admin-user admin --admin-password $adminPass --admin-email test@example.com --admin-firstname Admin --admin-lastname ChangeMe");
+    shell_exec("sudo -u $userName php70 bin/magento setup:install --db-host=$dbhost --dbname=$dbname --db-user=$dbuser --db-password=$dbpass --base-url=http://$domain/ --use-secure=0 --use-secure-admin=0 --use-rewrites=1 --language=en_US --timezone=America/Chicago --currency=USD --admin-user=admin --admin-password=$adminPass --admin-email=test@example.com --admin-firstname=Admin --admin-lastname=ChangeMe");
 }
 
 function _installMagentoOne($domain, Array $db, $adminPass, $dest, $userName)
