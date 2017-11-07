@@ -988,6 +988,10 @@ function _recursiveCallback($dir, array $fileCallback, array $dirCallback = [])
             if (!strcmp($item, '.') || !strcmp($item, '..')) {
                 continue;
             }
+            if(is_link($dir)) {
+                $fileCallback[0] = 'is_file';
+                $dirCallback[0] = 'is_dir';
+            }
             _recursiveCallback($dir . '/' . $item, $fileCallback, $dirCallback);
         }
         $callback = $dirCallback[0];
@@ -1025,9 +1029,7 @@ function _recursiveCallback($dir, array $fileCallback, array $dirCallback = [])
 function rmdirRecursive($dir, $recursive = true)
 {
     if ($recursive) {
-        if(!is_link($dir)) {
-            $result = _recursiveCallback($dir, ['unlink'], ['rmdir']);
-        }
+        $result = _recursiveCallback($dir, ['unlink'], ['rmdir']);
     } else {
         if(!is_link($dir)) {
             $result = @rmdir($dir);
