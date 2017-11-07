@@ -717,15 +717,10 @@ function migrateDb($options, $fromCreds, $newDbCreds)
         exit(1);
     }
 
-    if (isset($output)) {
-        unlink($dbfile);
-        throw new \Exception('Could not import database. Message: ' . $output . "\n");
-        exit(1);
-    }
-
     unlink($dbfile);
 
     echo "Changing base_urls to 'http://".$domain."/'...\n";
+
     try {
         $dest = new \PDO(
             "mysql:dbname=$destdb;host=$desthost",
