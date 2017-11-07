@@ -59,14 +59,14 @@ echo "Finished Installing Magento 2\n";
 if (isset($vmUser)) {
     echo "Vhost User " . $vmUser['name'] . "\n";
     echo "Vhost Pass " . $vmUser['passwd'] . "\n";
-    foreach($db as $key => $value) {
-        echo "$key: $value\n";
-    }
-
-    echo "Admin URI: $adminuri\n";
-    echo "Admin User: admin\n";
-    echo "Admin Password: $adminPass\n";
 }
+foreach($db as $key => $value) {
+    echo "$key: $value\n";
+}
+
+echo "Admin URI: $adminuri\n";
+echo "Admin User: admin\n";
+echo "Admin Password: $adminPass\n";
 
 /**
  * Get Server Internal IP
@@ -440,17 +440,15 @@ function install($vmUser, $dest, $domain, $mflag, Array $db, $version, $adminPas
             echo "Finished installing files.\n";
         } else {
             echo "$dest/ not empty...\n";
-            if (!array_key_exists('i', $options)) {
-                $ans = readline("Delete files in $dest? (y/N)");
-                if ($ans != 'y'
-                    && $ans != 'Y'
-                    && $ans != 'yes'
-                    && $ans != 'YES'
-                    && $ans != 'Yes'
-                ) {
-                    echo "Exiting....\n";
-                    exit(1);
-                }
+            $ans = readline("Delete files in $dest? (y/N)");
+            if ($ans != 'y'
+                && $ans != 'Y'
+                && $ans != 'yes'
+                && $ans != 'YES'
+                && $ans != 'Yes'
+            ) {
+                echo "Exiting....\n";
+                exit(1);
             }
             echo "Removing Files...\n";
             rmdirRecursive($dest, true);
