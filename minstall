@@ -429,7 +429,6 @@ function install($vmUser, $dest, $domain, $mflag, Array $db, $version, $adminPas
     $adminuri;
     $userName = $vmUser['name'];
     if (is_dir($dest)) {
-        chdir($dest);
         $user = posix_getpwnam($vmUser['name']);
         chown($dest, $user['name']);
         chgrp($dest, 'web-data');
@@ -461,8 +460,10 @@ function install($vmUser, $dest, $domain, $mflag, Array $db, $version, $adminPas
             }
             echo "Removing Files...\n";
             rmdirRecursive($dest, true);
-            createDestinationFolder($dest);
-            chown($dest, $userName);
+            if(!is_dir($dest)) {
+                createDestinationFolder($dest);
+            }
+            chown($dest, $user['name']);
             chgrp($dest, 'web-data');
             echo "Installing $mflag...\n";
             $adminuri = _installFiles($dest, $domain, $mflag, $db, $version, $userName, $adminPass);
@@ -476,7 +477,8 @@ function _installFiles($dest, $domain, $mflag, $db, $version, $userName, $adminP
 {
     $publickey = 'aa6087e1263299edfda4b096cb610d3c';
     $privatekey = 'aa6087e1263299edfda4b096cb610d3c';
-     
+
+    chdir($dest); 
     if($mflag === 'M2') {
         exec("sudo -u $userName COMPOSER_AUTH='{\"http-basic\": {\"repo.magento.com\": {\"username\": \"dbbca56211fff4e4efd571db7814780d\", \"password\": \"6ae81f9a2f4f67ea67c63c06e5db1992\"}}}' composer create-project --repository-url=https://repo.magento.com magento/project-community-edition:$version $dest");
         $adminuri = _installMagentoTwo($domain, $db, $adminPass, $userName);
@@ -657,6 +659,10 @@ function _recursiveCallback($dir, array $fileCallback, array $dirCallback = [])
         foreach (scandir($dir) as $item) {
             if (!strcmp($item, '.') || !strcmp($item, '..')) {
                 continue;
+            }
+            if (is_link($dir)) {
+                $fileCallback[0] = 'is_file';
+                $dirCallback[0] = 'is_dir';
             }
             _recursiveCallback($dir . '/' . $item, $fileCallback, $dirCallback);
         }
