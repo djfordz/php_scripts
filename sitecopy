@@ -554,7 +554,9 @@ function siteCopy($src, $dest, $options)
             }
             echo "Removing Files...\n";
             rmdirRecursive($dest, true);
-            createDestinationFolder($dest);
+            if(!is_dir($dest)) {
+                createDestinationFolder($dest);
+            }
             echo "Copying files...\n";
             cpdirRecursive($src, $dest);
             echo "Finished copying files.\n";
@@ -663,7 +665,7 @@ function migrateDb($options, $fromCreds, $newDbCreds)
     $dbfile = "/home/$dbname.$tstamp.sql.gz";
 
     $output = shell_exec(
-        "mysqldump --quick --lock-tables=false -h$dbhost $dbname | gzip > $dbfile"
+        "mysqldump --quick --lock-tables=false -h$dbhost -u$dbuser -p$dbpass $dbname | gzip > $dbfile"
     );
 
     if (preg_match("/error/", $output)) {
@@ -708,7 +710,7 @@ function migrateDb($options, $fromCreds, $newDbCreds)
     echo "Importing database...\n";
     try {
         $output = shell_exec(
-            "zcat $dbfile | mysql -h$desthost $destdb 2>&1"
+            "zcat $dbfile | mysql -h$desthost -u$destuser -p$destpass $destdb 2>&1"
         );
     } catch (\Exception $e) {
         echo "Could not import database " . $e->message . "Message: $output\n";
@@ -1028,9 +1030,13 @@ function _recursiveCallback($dir, array $fileCallback, array $dirCallback = [])
 function rmdirRecursive($dir, $recursive = true)
 {
     if ($recursive) {
-        $result = _recursiveCallback($dir, ['unlink'], ['rmdir']);
+        if(!is_link($dir)) {
+            $result = _recursiveCallback($dir, ['unlink'], ['rmdir']);
+        }
     } else {
-        $result = @rmdir($dir);
+        if(!is_link($dir)) {
+            $result = @rmdir($dir);
+        }         
     }
     return $result;
 }

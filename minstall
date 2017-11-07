@@ -1,4 +1,4 @@
-#!/bin/php env
+#!/usr/bin/php70
 <?php
 /**
  * This script will copy one Magento installation to another location
@@ -32,6 +32,10 @@ $options = getopt(
     )
 );
 
+if($argc < 2) {
+    help();
+    exit;
+}
 if (!ini_get('register_argc_argv')) {
     echo "Could not set register_argc_argv\n";
     echo "Must use --from --to flags for paths\n";
@@ -53,8 +57,8 @@ install($vmUser, $dest, $domain, $mflag, $db, $version);
 
 echo "Finished Installing Magento 2\n";
 if (isset($vmUser)) {
-    echo "Vhost User " . $vmUser[0] . "\n";
-    echo "Vhost Pass " . $vmUser[1] . "\n";
+    echo "Vhost User " . $vmUser['name'] . "\n";
+    echo "Vhost Pass " . $vmUser['passwd'] . "\n";
     foreach($db as $key => $value) {
         echo "$key: $value\n";
     }
@@ -111,12 +115,12 @@ function _testPath($dest)
         $dir = explode('/', realpath($dest));
     }
 
-    if ($d[1] !== 'home') {
+    if ($dir[1] !== 'home') {
         echo "Dest not in home directory.\n";
         exit(1);
     }
 
-    $user = posix_getpwnam($dir[2])
+    $user = posix_getpwnam($dir[2]);
 
     if(empty($user)) {
         $user = array();
@@ -140,20 +144,7 @@ function checkPath($dest)
     
     list($user, $dest) = _testPath($dest);
 
-    if (!array_key_exists('i', $options)) {
-        $ans = readline("Install Magento TO $dest (y/N)");
-        if ($ans != 'Y' 
-            && $ans != 'y' 
-            && $ans != 'yes' 
-            && $ans != 'YES' 
-            && $ans != 'Yes'
-        ) {
-            echo "exiting...\n";
-            exit(1);
-        }
-    } else {
-        echo "Installing Magento TO $dest/\n\n";
-    }
+    
 
     return array($user, $dest);
 
@@ -222,7 +213,7 @@ function checkFlags($options)
     }
 
     if (array_key_exists('d', $options) && array_key_exists('domain', $options)) {
-        echo "Cannot user -d and --domain flags together, they are same thing.\n"
+        echo "Cannot user -d and --domain flags together, they are same thing.\n";
     } else if(array_key_exists('d', $options) || array_key_exists('domain', $options)) {
         $domain = isset($options['d']) ? $options['d'] : $options['domain'];
     } else {
@@ -230,7 +221,7 @@ function checkFlags($options)
         exit(1);
     }
 
-    if(array_key_exists('host')) {
+    if(array_key_exists('host', $options)) {
         $host = $options['host'];
     }
     if(!(array_key_exists('m1', $options) || array_key_exists('m2', $options))) {
@@ -252,6 +243,22 @@ function checkFlags($options)
             $version = '1.9.3.6';
         }
     }
+
+    if(!array_key_exists('i', $options) && !array_key_exists('interactive', $options)) {
+        $ans = readline("Install Magento TO $dest (y/N)");
+        if ($ans != 'Y' 
+            && $ans != 'y' 
+            && $ans != 'yes' 
+            && $ans != 'YES' 
+            && $ans != 'Yes'
+        ) {
+            echo "exiting...\n";
+            exit(1);
+        }
+    } else {
+        echo "Installing Magento TO $dest/\n\n";
+    }
+
     return array($vmUser, $dest, $domain, $mflag, $dbuser, $dbname, $host, $version);
 }
 
@@ -264,7 +271,7 @@ function checkFlags($options)
  */
 function createDb($dbname, $dbuser, $dbhost) 
 {
-    $creds = _createDb($dbname, $dbuser, $host);
+    $creds = _createDb($dbname, $dbuser, $dbhost);
 
     if (!isset($creds)) {
         throw new \Exception("could not create db.");
@@ -314,7 +321,6 @@ function help()
 function _createDb($dbname, $dbuser, $dbhost)
 {
 
-    echo "Creating Database User...\n";
     $dbpass = createDbUser($dbuser, $dbhost);
     echo "Creating Database...\n";
     $output = shell_exec("mmcli database:create $dbname 2>&1");
@@ -361,7 +367,7 @@ function createDbUser($user, $host)
     if (!preg_match('/success/', $output)) {
         throw new \Exception("Could not create user. Message: " . $output . "\n");
         exit(1);
-    } 
+    }
 
     return $password;
 }
@@ -380,7 +386,9 @@ function createVhost($dest, $user, $domain, $mflag)
 {
     echo "Creating vhost...\n";
     $ip = getIP();
-    $output = shell_exec("mmcli vhost:create $ip $user $dest '$domain' 2>&1");
+    $userName = $user['name'];
+    $userPass = $user['passwd'];
+    $output = shell_exec("mmcli vhost:create $ip $userName $dest '$domain' 2>&1");
     if (preg_match("/error/", $output)) {
         echo "vhost already created...\n";
     }
@@ -412,12 +420,26 @@ function createVhost($dest, $user, $domain, $mflag)
  *
  * @return void
  */
-function install($vmUser, $dest, $mflag, Array $db)
+function install($vmUser, $dest, $domain, $mflag, Array $db, $version)
 {
+    
+    $userName = $vmUser['name'];
     if (is_dir($dest)) {
+        chdir($dest);
+        $user = posix_getpwnam($vmUser['name']);
+        chown($dest, $user['name']);
+        chgrp($dest, 'web-data');
+        //posix_setuid($user['uid']);
+        $path = posix_getcwd();
+        echo $path . "\n";
+        if($path !== $dest) {
+            throw new \Exception("Could not change directory into $dest");
+            exit(1);
+        }
+
         if (isDirEmpty($dest)) {
             echo "$dest/ is empty.\nInstalling $mflag...\n";
-            _installFiles($vmUser, $dest, $domain, $mflag, $db);
+            _installFiles($dest, $domain, $mflag, $db, $version, $userName);
             echo "Finished installing files.\n";
         } else {
             echo "$dest/ not empty...\n";
@@ -436,50 +458,43 @@ function install($vmUser, $dest, $mflag, Array $db)
             echo "Removing Files...\n";
             rmdirRecursive($dest, true);
             createDestinationFolder($dest);
+            chown($dest, $userName);
+            chgrp($dest, 'web-data');
             echo "Installing $mflag...\n";
-            _installFiles($vmUser, $dest, $domain, $mflag, $db);
+            _installFiles($dest, $domain, $mflag, $db, $version, $userName);
         }
     }
 }
 
-function _installFiles($vmUser, $dest, $domain, $mflag, Array $db)
+function _installFiles($dest, $domain, $mflag, $db, $version, $userName)
 {
     $publickey = 'aa6087e1263299edfda4b096cb610d3c';
     $privatekey = 'aa6087e1263299edfda4b096cb610d3c';
     $adminPass = randomPass(12);
-    chdir($dest);
-    $user = posix_getpwnam($vmUser);
-    chown($dest, $user);
-    chgrp($dest, 'www-data');
-    posix_seteuid($user['uid']);
-    $path = posix_getcwd();
-    if($path !== $dest) {
-        throw new \Exception("Could not change directory into $dest");
-        exit(1);
-    }
-    
+     
     if($mflag === 'M2') {
-        shell_exec("echo \"$publickey $privatekey\" | composer create-project --repository-url=https://repo.magento.com magento/product-community-edition:$version .");
-        _installMagentoTwo($user, $dest, $domain, $db);
+        exec("sudo -u $userName COMPOSER_AUTH='{\"http-basic\": {\"repo.magento.com\": {\"username\": \"dbbca56211fff4e4efd571db7814780d\", \"password\": \"6ae81f9a2f4f67ea67c63c06e5db1992\"}}}' composer create-project --repository-url=https://repo.magento.com magento/project-community-edition:$version $dest");
+        _installMagentoTwo($domain, $db, $adminPass, $userName);
     } else {
-        _installMagentoOne($dest, $domain, $db, $adminPass, $dest); 
+        _installMagentoOne($domain, $db, $adminPass, $dest, $userName); 
     }
 }
 
-function _installMagentoTwo($domain, Array $db, $adminPass)
+function _installMagentoTwo($domain, Array $db, $adminPass, $userName)
 {
-    list($dbname, $dbuser, $dbpass, $dbhost) = $db;
+    $dbname = $db['dbname'];
+    $dbuser = $db['dbuser'];
+    $dbpass = $db['dbpass'];
+    $dbhost = $db['dbhost'];
 
-    shell_exec("php70 bin/magento setup:install --db-host=$dbhost --db-user=$dbuser --db-password=$dbpass --base-url=http://$domain/ --use-secure=0 --use-secure-admin=0 \ 
-        --use-rewrites=1 --language=en_US --timezone=America/Chicago --currency=USD --admin-user=admin --admin-password=$adminPass --admin-email=test@example.com \
-        --admin-firstname=Admin --admin-lastname=ChangeMe");
+    shell_exec("sudo -u $userName php70 bin/magento setup:install --db-host $dbhost --db-user $dbuser --db-password $dbpass --base-url http://$domain/ --use-secure 0 --use-secure-admin 0 --use-rewrites 1 --language en_US --timezone America/Chicago --currency USD --admin-user admin --admin-password $adminPass --admin-email test@example.com --admin-firstname Admin --admin-lastname ChangeMe");
 }
 
-function _installMagentoOne($domain, Array $db, $adminPass, $dest)
+function _installMagentoOne($domain, Array $db, $adminPass, $dest, $userName)
 {
     list($dbname, $dbuser, $dbpass, $dbhost) = $db;
 
-    shell_exec("n98-magerun install --dbHost=$dbhost --dbUser=$dbUser --dbPass=$dbPass --dbName=$dbName --useDefaultConfigParams=yes  --magentoVersionByName=magento-ce-$version --installationFolder=$dest --baseUrl=http://$domain/");
+    shell_exec("sudo -u $userName n98-magerun install --dbHost=$dbhost --dbUser=$dbUser --dbPass=$dbPass --dbName=$dbName --useDefaultConfigParams=yes  --magentoVersionByName=magento-ce-$version --installationFolder=$dest --baseUrl=http://$domain/");
 }
 /**
  * Check to see if directory is empty
