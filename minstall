@@ -50,10 +50,10 @@ if (!ini_get('register_argc_argv')) {
 } 
 
 list($vmUser, $dest, $domain, $mflag, $dbuser, $dbname, $dbhost, $version) = checkFlags($options);
-
+$adminPass = randomPass(12);
 createVhost($dest, $vmUser, $domain, $mflag);
 $db = createDb($dbname, $dbuser, $dbhost);
-install($vmUser, $dest, $domain, $mflag, $db, $version);
+install($vmUser, $dest, $domain, $mflag, $db, $version, $adminPass);
 
 echo "Finished Installing Magento 2\n";
 if (isset($vmUser)) {
@@ -62,6 +62,9 @@ if (isset($vmUser)) {
     foreach($db as $key => $value) {
         echo "$key: $value\n";
     }
+
+    echo "Admin User: admin\n";
+    echo "Admin Password: $adminPass";
 }
 
 /**
@@ -238,7 +241,7 @@ function checkFlags($options)
         $version = isset($options['v']) ? $options['v'] : $options['version'];
     } else {
         if($mflag = 'M2') {
-            $version = '2.2';
+            $version = '2.2.1';
         } else if ($mflag === 'M1') {
             $version = '1.9.3.6';
         }
@@ -420,7 +423,7 @@ function createVhost($dest, $user, $domain, $mflag)
  *
  * @return void
  */
-function install($vmUser, $dest, $domain, $mflag, Array $db, $version)
+function install($vmUser, $dest, $domain, $mflag, Array $db, $version, $adminPass)
 {
     
     $userName = $vmUser['name'];
@@ -439,7 +442,7 @@ function install($vmUser, $dest, $domain, $mflag, Array $db, $version)
 
         if (isDirEmpty($dest)) {
             echo "$dest/ is empty.\nInstalling $mflag...\n";
-            _installFiles($dest, $domain, $mflag, $db, $version, $userName);
+            _installFiles($dest, $domain, $mflag, $db, $version, $userName, $adminPass);
             echo "Finished installing files.\n";
         } else {
             echo "$dest/ not empty...\n";
@@ -461,16 +464,15 @@ function install($vmUser, $dest, $domain, $mflag, Array $db, $version)
             chown($dest, $userName);
             chgrp($dest, 'web-data');
             echo "Installing $mflag...\n";
-            _installFiles($dest, $domain, $mflag, $db, $version, $userName);
+            _installFiles($dest, $domain, $mflag, $db, $version, $userName, $adminPass);
         }
     }
 }
 
-function _installFiles($dest, $domain, $mflag, $db, $version, $userName)
+function _installFiles($dest, $domain, $mflag, $db, $version, $userName, $adminPass)
 {
     $publickey = 'aa6087e1263299edfda4b096cb610d3c';
     $privatekey = 'aa6087e1263299edfda4b096cb610d3c';
-    $adminPass = randomPass(12);
      
     if($mflag === 'M2') {
         exec("sudo -u $userName COMPOSER_AUTH='{\"http-basic\": {\"repo.magento.com\": {\"username\": \"dbbca56211fff4e4efd571db7814780d\", \"password\": \"6ae81f9a2f4f67ea67c63c06e5db1992\"}}}' composer create-project --repository-url=https://repo.magento.com magento/project-community-edition:$version $dest");
@@ -487,7 +489,7 @@ function _installMagentoTwo($domain, Array $db, $adminPass, $userName)
     $dbpass = $db['dbpass'];
     $dbhost = $db['dbhost'];
 
-    shell_exec("sudo -u $userName php70 bin/magento setup:install --db-host=$dbhost --dbname=$dbname --db-user=$dbuser --db-password=$dbpass --base-url=http://$domain/ --use-secure=0 --use-secure-admin=0 --use-rewrites=1 --language=en_US --timezone=America/Chicago --currency=USD --admin-user=admin --admin-password=$adminPass --admin-email=test@example.com --admin-firstname=Admin --admin-lastname=ChangeMe");
+    shell_exec("sudo -u $userName php70 bin/magento setup:install --db-host=$dbhost --db-name=$dbname --db-user=$dbuser --db-password=$dbpass --base-url=http://$domain/ --use-secure=0 --use-secure-admin=0 --use-rewrites=1 --language=en_US --timezone=America/Chicago --currency=USD --admin-user=admin --admin-password=$adminPass --admin-email=test@example.com --admin-firstname=Admin --admin-lastname=ChangeMe");
 }
 
 function _installMagentoOne($domain, Array $db, $adminPass, $dest, $userName)
