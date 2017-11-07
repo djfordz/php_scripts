@@ -433,12 +433,6 @@ function install($vmUser, $dest, $domain, $mflag, Array $db, $version, $adminPas
         chown($dest, $user['name']);
         chgrp($dest, 'web-data');
         //posix_setuid($user['uid']);
-        $path = posix_getcwd();
-        echo $path . "\n";
-        if($path !== $dest) {
-            throw new \Exception("Could not change directory into $dest");
-            exit(1);
-        }
 
         if (isDirEmpty($dest)) {
             echo "$dest/ is empty.\nInstalling $mflag...\n";
