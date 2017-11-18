@@ -192,6 +192,11 @@ function checkFlags($options = false)
         exit(1);
     }
 
+    if(array_key_exists('u', $options) || array_key_exists('user', $options) && !(array_key_exists('db', $options) || array_key_exists('database', $options))) {
+        echo "Cannot user --user or -u flag without --database or -v flag.\n";
+        exit(1);
+    }
+
     if (array_key_exists('n', $options) && (!(array_key_exists('domain', $options) || array_key_exists('d', $options)))) { 
         echo "Need --domain and --db options when -n new is used (2).\n";
         exit(1);
