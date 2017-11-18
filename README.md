@@ -1,3 +1,8 @@
+# WARNING
+### Although every precaution and check has been made to make this script as safe as possible, there is always corner cases. This script should never harm the live site, and all precautions have been made for this, but it is never 100%. Use at your own risk!
+
+#### There may be corner cases with the copied site, and manual methods may need to be employed to ensure the copied site works correctly, such as this script can only set a single domain in the database, if there are multidomains the customer wants set, these will have to be added manually. If you are not comfortable doing this, do not use this script!
+
 ## sitecopy for Magento 1.x AND Magento 2.x sites
 
 Script will differentiate whether it is M1 or M2 site, and will adjust accordingly. All commands will be the same regardless of site version.
