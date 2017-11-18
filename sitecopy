@@ -55,22 +55,35 @@ $vmPass = $paths['user']['password'];
 $domain = isset($options['d']) ? $options['d'] : $options['domain'];
 
 $fromCreds = getDbCreds($paths['src']);
-$newDbCreds = getDbCredsDest($options);
+$toCreds = getDbCredsDest($options);
+
+$toCheck = array_filter($toCreds); 
+$fromCheck = array_filter($fromCreds);
+
+if(empty($toCheck) || empty($fromCheck)) {
+    echo "From Db or To Db creds do not exist, exiting...\n";
+    exit(1);
+}
+
+if($fromCreds['dbname'] === $toCreds['dbname']) {
+    echo "TO and FROM databases are the same!! You will overwrite live database!!! exiting....\n";
+    exit(1);
+}
 
 if (array_key_exists('e', $options)) {
     siteCopy($paths['src'], $paths['dest'], $vmUser);
-    addCreds($newDbCreds, $paths['dest']);
-    migrateDb($fromCreds, $newDbCreds, $domain);
+    addCreds($toCreds, $paths['dest']);
+    migrateDb($fromCreds, $toCreds, $domain, $options);
 }
 
 if (array_key_exists('n', $options)) {
     createVhost($paths['src'], $paths['dest'], $vmUser, $domain);
-    siteCopy($paths['src'], $paths['dest'], $options);
-    addCreds($newDbCreds, $paths['dest']);
-    migrateDb($fromCreds, $newDbCreds, $domain);
+    siteCopy($paths['src'], $paths['dest'], $vmUser);
+    addCreds($toCreds, $paths['dest']);
+    migrateDb($fromCreds, $toCreds, $domain, $options);
 }
 
-echo "Flushing Cache...\n";
+echo "Flushing cache...\n";
 $flag = getVersion($paths['dest']);
 chdir($paths['dest']);
 if ($flag === 'M1') {
@@ -79,9 +92,9 @@ if ($flag === 'M1') {
     exec("sudo -u $vmUser n98-magerun2 cache:flush");
 }
 
-echo "Finished copying Magento Install\n";
-echo "Vhost User $vmUser\n";
-echo "Vhost Pass $vmPass\n";
+echo "Finished copying magento install\n";
+echo "Vhost User:$vmUser\n";
+echo "Vhost Pass:$vmPass\n";
 
 /**
  * Ensure user wants to use paths
@@ -96,26 +109,6 @@ function checkPaths($options)
 
     $src = $options['from'];
     $dest = $options['to'];
-    $s = explode('/', realpath($src));
-    
-    if (!is_dir($src) && !isDirEmpty($src) &&  $s[1] !== 'home') {
-        throw new \Exception("FROM path is not valid");
-    }
-
-    if (!is_dir($dest)) {
-        createDestinationFolder($dest);
-    }
-
-    $dest = realpath($dest);
-    $d = explode('/', $dest);
-    if ($d[1] !== 'home') {
-        throw new \Exception("Destination not in /home directory");
-    }
-
-    $user = getVmUser($dest);
-    if ($user['user'] === 'none') {
-        $user = createVmUser($d[2]);
-    }
 
     $ans = readline("Copy site FROM $src TO $dest (y/N)");
     if ($ans != 'Y' 
@@ -126,6 +119,40 @@ function checkPaths($options)
     ) {
         echo "exiting...\n";
         exit(1);
+    }
+    $s = explode('/', realpath($src));
+    
+    if (!is_dir($src) && !isDirEmpty($src) &&  $s[1] !== 'home') {
+        throw new \Exception("FROM path is not valid");
+    }
+
+    $user = getVmUser($dest);
+    $user1 = $user['user'];
+    $userCheck = shell_exec("mmcli user:list 2>&1");
+    if ($user1 === 'none' || !preg_match("/$user1/", $userCheck)) {
+        if ($user1 !== 'none') {
+            echo "Creating VM User...\n";
+            $user = createVmUser($user1);
+        }
+    }
+    
+    if (!is_dir($dest)) {
+        createDestinationFolder($dest);
+    }
+
+    $dest = realpath($dest);
+    $d = explode('/', $dest);
+    if ($d[1] !== 'home') {
+        throw new \Exception("Destination not in /home directory");
+    }
+
+    if($user['user'] === 'none') {
+        echo "Creating VM User...\n";
+        $user = createVmUser($d[2]);
+    } 
+    
+    if ($user['user'] === 'none') {
+        throw new \Exception("Could not create VM User.");
     }
 
     return array('src' => $src, 'dest' => $dest, 'user' => $user);
@@ -161,23 +188,25 @@ function checkFlags($options = false)
     }
 
     if (array_key_exists('e', $options) && (!(array_key_exists('d', $options) || array_key_exists('domain', $options)))) {
-        echo "Need --domain or -d options when -e is used.\n";
+        echo "Need --domain or -d options when -e is used (1).\n";
         exit(1);
     }
 
     if (array_key_exists('n', $options) && (!(array_key_exists('domain', $options) || array_key_exists('d', $options)))) { 
-        echo "Need --domain and --db options when -n new is used.\n";
+        echo "Need --domain and --db options when -n new is used (2).\n";
         exit(1);
+
+        if (!(array_key_exists('user', $options) || array_key_exists('u', $options))) {
+            if (array_key_exists('db', $options) || array_key_exists('v', $options)) {
+                $options['user'] = isset($options['db']) ? $options['db'] : $options['v'];
+            } else {
+                echo "need --db or -v option to continue (3).\n";
+                exit(1);
+            }
+        }
     }  
         
-    if (!(array_key_exists('user', $options) || array_key_exists('u', $options))) {
-        if (array_key_exists('db', $options) || array_key_exists('v', $options)) {
-            $options['user'] = isset($options['db']) ? $options['db'] : $options['v'];
-        } else {
-            echo "need --db or -v option to continue.\n";
-            exit(1);
-        }
-    }
+    
 }
 
 /**
@@ -190,14 +219,13 @@ function checkFlags($options = false)
 function getDbCredsDest($options) 
 {
     $creds = null;
+    $host;
     if (array_key_exists('db', $options) || array_key_exists('v', $options)) {
         $dbname = isset($options['db']) ? $options['db'] : $options['v'];
 
-        if (array_key_exists('host', $options)) {
-            $host = isset($options['host']) ? $options['host'] : 'localhost';
-        } 
+        $host = isset($options['host']) ? $options['host'] : 'localhost';
 
-        if (array_key_exists('user', $options) || array_key_exists('u')) {
+        if (array_key_exists('user', $options) || array_key_exists('u', $options)) {
             $dbuser = isset($options['user']) ? $options['user'] : $options['u'];
         }  else {
             $dbuser = isset($options['db']) ? $options['db'] : $options['v'];
@@ -226,19 +254,17 @@ function createDb($dbname, $user, $host)
 {
     echo "Creating Database...\n";
     $output = shell_exec("mmcli database:create $dbname 2>&1");
-    if (preg_match('/success/', $output)) {
-        $output = shell_exec(
-            "mmcli database:user:privileges:update $dbname $user $host 'all privileges' 2>&1"
-        );
-
-        if (!preg_match('/success/', $output)) {
-            throw new \Exception("Could not set database privileges. Message: " . $output . "\n");
-        }
-    } else {
-        throw new \Exception("Could not create database.");
+    if (!preg_match('/success/', $output)) {
+        throw new \Exception("Could not create database. Message: $output");
     }
 
     $dbuser = createUser($user, $host);
+
+    $output = shell_exec("mmcli database:user:privileges:update $dbname $user $host 'all privileges' 2>&1");
+
+    if (!preg_match('/success/', $output)) {
+        throw new \Exception("Could not set database privileges. Message: $output");
+    }
 
     $creds = array(
         'dbname' => $dbname, 
@@ -325,7 +351,6 @@ function siteCopy($src, $dest, $user)
         if (isDirEmpty($dest)) {
             echo "$dest/ is empty.\nCopying files...\n";
             cpdirRecursive($src, $dest);
-            echo "Finished copying files.\n";
         } else {
             echo "$dest/ not empty...\n";
             $ans = readline("Delete files in $dest? (y/N)");
@@ -338,18 +363,17 @@ function siteCopy($src, $dest, $user)
                 echo "Exiting....\n";
                 exit(1);
             }
-            echo "Removing Files...\n";
+            echo "Removing files...\n";
             rmdirRecursive($dest, true);
-            if(!is_dir($dest)) {
+            if (!is_dir($dest)) {
                 createDestinationFolder($dest);
             }
             echo "Copying files...\n";
             cpdirRecursive($src, $dest);
-            echo "Finished copying files.\n";
         }
+        echo "Setting permissions...\n";
+        chownRecursive($dest, $user);
     }
-
-    chownRecursive($dest, $vmUser);
 }
 
 /**
@@ -420,35 +444,27 @@ function getRandomBytes($nbBytes = 32)
  *
  * @param array  $options    options
  * @param string $fromCreds  database credentials of database copying from.
- * @param string $newDbCreds database credentials of database copying to.
+ * @param string $toCreds database credentials of database copying to.
  *
  * @throws Could not dump database uses mysqldump, gzip
  * @throws could not import database uses zcat, mysql
  *
  * @return void 
  */
-function migrateDb($fromCreds, $newDbCreds, $domain)
+function migrateDb($fromCreds, $toCreds, $domain, $options)
 {
     echo "Creating database dump...\n";
     $srcname  = $fromCreds['dbname'];
     $srchost  = $fromCreds['dbhost'];
     $srcuser  = $fromCreds['dbuser'];
     $srcpass  = $fromCreds['dbpass'];
-    $destname = $newDbCreds['dbname'];
-    $desthost = $newDbCreds['dbhost'];
-    $destuser = $newDbCreds['dbuser'];
-    $destpass = $newDbCreds['dbpass'];
+    $destname = $toCreds['dbname'];
+    $desthost = $toCreds['dbhost'];
+    $destuser = $toCreds['dbuser'];
+    $destpass = $toCreds['dbpass'];
     $dbprefix = null;
     if (isset($fromCreds['dbprefix'])) {
         $dbprefix = $fromCreds['dbprefix'];
-    }
-
-    $output = shell_exec(
-        "mysqldump --quick --lock-tables=false -h$dbhost -u$dbuser -p$dbpass $dbname | gzip > $dbfile"
-    );
-
-    if ($srcname == $destname) {
-        throw new \Exception("TO Database is same as FROM database, you will overwrite live database!!!! Exiting....");
     }
 
     $tstamp = time();
@@ -465,20 +481,21 @@ function migrateDb($fromCreds, $newDbCreds, $domain)
     if (array_key_exists('e', $options)) { 
         if (!(array_key_exists('v', $options) || array_key_exists('db', $options))) {
             echo "Dropping database $destname...\n";
-
             $output = shell_exec("mmcli database:delete $destname 2>&1"); 
             
             if (preg_match("/error/", $output)) {
                 throw new \Exception(" Could not delete database. Message: $output");
             }
 
-            $output = shell_exec("mmcli database:create $destdb 2>&1");
+            echo "Creating database $destname...\n";
+            $output = shell_exec("mmcli database:create $destname 2>&1");
 
             if (preg_match("/error/", $output)) {
                 throw new \Exception("Could not set privileges for db user. Message: " . $output . "\n");
             }
 
-            $output = shell_exec("mmcli database:user:privileges:update $destdb $destuser $dbhost 'all privileges' 2>&1");
+            echo "Setting database permissions...\n";
+            $output = shell_exec("mmcli database:user:privileges:update $destname $destuser $desthost 'all privileges' 2>&1");
 
             if (preg_match("/error/", $output)) {
                 throw new \Exception($output . " Could not set database permissions. Message: " . $output . "\n");
@@ -565,7 +582,6 @@ function getDbCreds($path)
             'dbuser' => $dbuser, 
             'dbpass' => $dbpass, 
             'dbhost' => $dbhost, 
-            'path' => $path
         );
     } else if (is_file($path . '/app/etc/env.php')) {
             $envData = include $path . '/app/etc/env.php';
@@ -574,7 +590,6 @@ function getDbCreds($path)
             'dbuser' => $envData['db']['connection']['default']['username'],
             'dbpass' => $envData['db']['connection']['default']['password'], 
             'dbhost' => $envData['db']['connection']['default']['host'], 
-            'path' => $path
         );
         
     } else {
@@ -681,8 +696,6 @@ function chmodRecursive($dir, $mode)
  */
 function chownRecursive($path, $user)
 {
-    echo "Setting Directory Ownership on $path\n";
-
     $dir = new DirectoryIterator($path);
     foreach ($dir as $item) {
         chown($item->getPathname(), (string)$user);
@@ -905,7 +918,7 @@ function getIP()
 function createDns($domain)
 {
     echo "Creating DNS...\n";
-    $ip = exec('curl http://ipecho.net/plain; echo');
+    $ip = @exec('curl http://ipecho.net/plain; echo');
     $output = shell_exec("mmcli dns:create $domain $ip 2>&1");
     if (preg_match("/error/", $output)) {
         echo "DNS already created...\n";
