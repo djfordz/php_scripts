@@ -235,16 +235,20 @@ function checkFlags($options)
         $mflag = array_key_exists('m1', $options) ? 'M1' : 'M2';
     } 
 
-    if(array_key_exists('v', $options) && array_key_exists('version', $options)) {
-        echo "Cannot use -v and --version together, they are same thing.\n";
-        exit(1);
-    } else if(array_key_exists('v', $options) || array_key_exists('version', $options)) {
-        $version = isset($options['v']) ? $options['v'] : $options['version'];
-    } 
+    $version = '';
 
     if ($mflag === 'M1') {
         $version = '1.9.3.6';
     }
+
+    if(array_key_exists('v', $options) && array_key_exists('version', $options)) {
+        echo "Cannot use -v and --version together, they are same thing.\n";
+        exit(1);
+    } 
+    
+    if(array_key_exists('v', $options) || array_key_exists('version', $options)) {
+        $version = isset($options['v']) ? $options['v'] : $options['version'];
+    } 
 
     if(!array_key_exists('i', $options) && !array_key_exists('interactive', $options)) {
         $ans = readline("Install Magento TO $dest (y/N)");
