@@ -38,7 +38,7 @@ if (!ini_get('register_argc_argv')) {
     exit(1);
 } else {
     if ($argc < 3 ) {
-        echo "Need FROM path and TO path of Magento installations\n";
+        help();
         exit();
     } else {
         $options['from'] = $argv[$argc - 2];
@@ -977,7 +977,10 @@ function createVmUser($user)
 function help() 
 {
     echo "\nMust be run as user root! Be Careful!\n
-        Please report all bugs to david@magemojo.com\n\n";
+        Please report all bugs to david@magemojo.com\n\n
+        NOTE: If vhost already exists that has multiple domains, a new vhost will be created,
+        with just single domain as listed in --domain flag,
+         just delete the new vhost if needed\n\n";
     echo "usage: ./sitecopy -dehnuv [ --user db_user ] 
         [ --db db_name ] [ --domain domain_name ] 
         /path/from/Magento /path/to/Magento\n";
